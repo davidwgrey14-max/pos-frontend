@@ -1,5 +1,6 @@
-// src/pages/Cashier/CashierLogin.jsx - UPDATED MUI VERSION
-import React, { useState } from 'react';
+// src/pages/Auth/CashierLogin.jsx - COMPLETE UPDATED VERSION
+
+import React, { useState, useEffect } from 'react';
 import { 
   Container,
   Box,
@@ -12,19 +13,179 @@ import {
   CircularProgress,
   TextField,
   InputAdornment,
-  IconButton
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Chip,
+  Divider,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  LinearProgress
 } from '@mui/material';
 import { 
   PointOfSale,
   ArrowBack,
   Visibility,
-  VisibilityOff
+  VisibilityOff,
+  Computer,
+  PhoneAndroid,
+  Laptop,
+  Tablet,
+  CheckCircle,
+  Cancel,
+  Pending,
+  Security,
+  Warning,
+  Refresh
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { authAPI } from '../../services/api';
+
+// ==================== DEVICE FINGERPRINTING ====================
+
+const getDeviceInfo = () => {
+  const userAgent = navigator.userAgent;
+  const platform = navigator.platform;
+  const screenInfo = `${window.screen.width}x${window.screen.height}`;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const language = navigator.language;
+  
+  // Detect OS
+  let os = 'Unknown';
+  let osVersion = 'Unknown';
+  let deviceType = 'unknown';
+  let deviceName = 'Unknown Device';
+  
+  if (userAgent.includes('Windows NT 10.0')) {
+    os = 'Windows 10';
+    osVersion = '10.0';
+    deviceType = 'desktop';
+    deviceName = 'Windows PC';
+  } else if (userAgent.includes('Windows NT 6.1')) {
+    os = 'Windows 7';
+    osVersion = '6.1';
+    deviceType = 'desktop';
+    deviceName = 'Windows PC';
+  } else if (userAgent.includes('Windows NT 6.2')) {
+    os = 'Windows 8';
+    osVersion = '6.2';
+    deviceType = 'desktop';
+    deviceName = 'Windows PC';
+  } else if (userAgent.includes('Windows NT 6.3')) {
+    os = 'Windows 8.1';
+    osVersion = '6.3';
+    deviceType = 'desktop';
+    deviceName = 'Windows PC';
+  } else if (userAgent.includes('Mac OS X')) {
+    os = 'macOS';
+    const match = userAgent.match(/Mac OS X (\d+[._]\d+)/);
+    if (match) osVersion = match[1].replace('_', '.');
+    deviceType = 'desktop';
+    deviceName = 'Mac';
+  } else if (userAgent.includes('iPhone')) {
+    os = 'iOS';
+    deviceType = 'mobile';
+    deviceName = 'iPhone';
+  } else if (userAgent.includes('iPad')) {
+    os = 'iOS';
+    deviceType = 'tablet';
+    deviceName = 'iPad';
+  } else if (userAgent.includes('Android')) {
+    os = 'Android';
+    deviceType = 'mobile';
+    const match = userAgent.match(/Android (\d+[._]\d+)/);
+    if (match) osVersion = match[1];
+    deviceName = 'Android Device';
+  } else if (userAgent.includes('Linux')) {
+    os = 'Linux';
+    deviceType = 'desktop';
+    deviceName = 'Linux PC';
+  }
+  
+  // Detect Browser
+  let browser = 'Unknown';
+  let browserVersion = 'Unknown';
+  if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) {
+    browser = 'Chrome';
+    const match = userAgent.match(/Chrome\/(\d+)/);
+    if (match) browserVersion = match[1];
+  } else if (userAgent.includes('Firefox')) {
+    browser = 'Firefox';
+    const match = userAgent.match(/Firefox\/(\d+)/);
+    if (match) browserVersion = match[1];
+  } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
+    browser = 'Safari';
+    const match = userAgent.match(/Version\/(\d+)/);
+    if (match) browserVersion = match[1];
+  } else if (userAgent.includes('Edg')) {
+    browser = 'Edge';
+    const match = userAgent.match(/Edg\/(\d+)/);
+    if (match) browserVersion = match[1];
+  } else if (userAgent.includes('Opera') || userAgent.includes('OPR')) {
+    browser = 'Opera';
+    const match = userAgent.match(/Opera\/(\d+)/) || userAgent.match(/OPR\/(\d+)/);
+    if (match) browserVersion = match[1];
+  }
+  
+  // Generate device ID (fingerprint)
+  const deviceId = require('crypto')
+    .createHash('sha256')
+    .update(`${userAgent}${platform}${screenInfo}${language}${timezone}`)
+    .digest('hex')
+    .substring(0, 32);
+  
+  // Generate MAC-like identifier (fingerprint)
+  const macAddress = require('crypto')
+    .createHash('sha256')
+    .update(`${userAgent}${screenInfo}${language}${timezone}`)
+    .digest('hex')
+    .substring(0, 17)
+    .toUpperCase()
+    .replace(/(.{2})(?=.)/g, '$1:');
+  
+  return {
+    userAgent,
+    deviceId,
+    os,
+    osVersion,
+    browser,
+    browserVersion,
+    deviceType,
+    deviceName,
+    macAddress,
+    screenResolution: screenInfo,
+    platform,
+    timezone,
+    language,
+    loginTime: new Date().toISOString()
+  };
+};
+
+const getDeviceIcon = (deviceType) => {
+  switch (deviceType) {
+    case 'desktop':
+      return <Computer />;
+    case 'laptop':
+      return <Laptop />;
+    case 'mobile':
+      return <PhoneAndroid />;
+    case 'tablet':
+      return <Tablet />;
+    default:
+      return <Computer />;
+  }
+};
+
+// ==================== MAIN COMPONENT ====================
 
 const CashierLogin = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -32,8 +193,23 @@ const CashierLogin = () => {
     email: '',
     password: ''
   });
+  const [deviceInfo, setDeviceInfo] = useState(null);
+  const [verificationRequired, setVerificationRequired] = useState(false);
+  const [verificationData, setVerificationData] = useState(null);
+  const [showDeviceDialog, setShowDeviceDialog] = useState(false);
+  const [timeUntilInactivity, setTimeUntilInactivity] = useState(300);
+  const [inactivityWarning, setInactivityWarning] = useState(false);
+  const [isCheckingDevice, setIsCheckingDevice] = useState(false);
 
-  // Color scheme matching the home.jsx
+  // Check for auto-logout message
+  useEffect(() => {
+    if (location.state?.autoLogout) {
+      setError(location.state.message || 'You were logged out due to inactivity.');
+      // Clear the state to prevent showing again
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
+
   const colors = {
     primary: {
       main: '#6366F1',
@@ -54,6 +230,47 @@ const CashierLogin = () => {
     }
   };
 
+  // Get device info on mount
+  useEffect(() => {
+    const info = getDeviceInfo();
+    setDeviceInfo(info);
+    console.log('📱 Device Info:', info);
+    
+    // Check if device was previously verified
+    const storedDeviceId = localStorage.getItem('deviceId');
+    if (storedDeviceId && storedDeviceId === info.deviceId) {
+      console.log('✅ Device previously verified');
+    }
+  }, []);
+
+  // Inactivity timer for verification
+  useEffect(() => {
+    let countdown;
+    
+    if (verificationRequired) {
+      const expiryTime = Date.now() + 5 * 60 * 1000;
+      countdown = setInterval(() => {
+        const remaining = Math.max(0, Math.floor((expiryTime - Date.now()) / 1000));
+        setTimeUntilInactivity(remaining);
+        
+        if (remaining <= 60) {
+          setInactivityWarning(true);
+        }
+        
+        if (remaining <= 0) {
+          clearInterval(countdown);
+          setVerificationRequired(false);
+          setShowDeviceDialog(false);
+          setError('Verification request expired. Please try again.');
+        }
+      }, 1000);
+    }
+    
+    return () => {
+      if (countdown) clearInterval(countdown);
+    };
+  }, [verificationRequired]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     
@@ -62,7 +279,6 @@ const CashierLogin = () => {
       return;
     }
     
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(credentials.email)) {
       setError('Please enter a valid email address');
@@ -75,136 +291,106 @@ const CashierLogin = () => {
     try {
       console.log('🚀 Attempting cashier login...');
       console.log('📧 Email:', credentials.email);
+      console.log('📱 Device Info:', deviceInfo);
       
-      // Cashier login API call using email and password
+      // STEP 1: Check if device is verified
+      setIsCheckingDevice(true);
+      const deviceCheck = await authAPI.checkDevice({
+        email: credentials.email,
+        deviceInfo: deviceInfo
+      });
+      setIsCheckingDevice(false);
+      
+      console.log('📱 Device check response:', deviceCheck);
+      
+      if (deviceCheck.requiresVerification) {
+        setVerificationRequired(true);
+        setVerificationData(deviceCheck);
+        setShowDeviceDialog(true);
+        setLoading(false);
+        return;
+      }
+      
+      if (!deviceCheck.success) {
+        throw new Error(deviceCheck.message || 'Device verification failed');
+      }
+      
+      // STEP 2: Device is verified, proceed with login
       const response = await authAPI.cashierLogin({
         email: credentials.email,
         password: credentials.password
       });
-
-      console.log('✅ Raw login response:', response);
       
-      // Handle different response structures
-      let responseData;
-      if (response && typeof response === 'object') {
-        // Check if response has data property (Axios response)
-        if (response.data !== undefined) {
-          responseData = response.data;
-          console.log('📦 Response structure: Axios-style (response.data)');
-        } 
-        // Check if response is the actual data directly
-        else if (response.success !== undefined) {
-          responseData = response;
-          console.log('📦 Response structure: Direct data (response)');
-        }
-        else {
-          responseData = response;
-          console.log('📦 Response structure: Unknown, using response directly');
-        }
-      } else {
-        throw new Error('Invalid response format: ' + typeof response);
-      }
+      console.log('✅ Login response:', response);
       
-      console.log('✅ Processed response data:', responseData);
-      
-      if (!responseData) {
-        throw new Error('Could not extract response data');
-      }
-      
-      // FIXED: Check for success property in responseData
-      if (responseData.success === true || responseData.user || responseData.cashier) {
-        // Extract cashier data from response
-        const cashierData = responseData.data || responseData.cashier || responseData.user || responseData;
-        
-        if (!cashierData || !cashierData._id) {
-          throw new Error('No valid cashier data received');
-        }
-
-        // Verify cashier has appropriate role
-        const allowedRoles = ['cashier', 'manager', 'admin'];
-        if (cashierData.role && !allowedRoles.includes(cashierData.role)) {
-          throw new Error('Access denied. Cashier privileges required.');
-        }
-        
-        // Check if account is active
-        if (cashierData.status === 'inactive' || cashierData.isActive === false) {
-          throw new Error('Cashier account is inactive. Please contact administrator.');
-        }
-
-        // Store cashier data (no tokens) - FIXED: Ensure all required fields
+      if (response.success) {
+        // Store session data with device info
         const authData = {
-          _id: cashierData._id,
-          name: cashierData.name || cashierData.email?.split('@')[0] || 'Cashier',
-          email: cashierData.email,
-          role: cashierData.role || 'cashier',
+          _id: response.user._id,
+          name: response.user.name,
+          email: response.user.email,
+          role: response.user.role,
+          token: response.token,
+          sessionId: response.sessionId || response.user.sessionId,
+          device: response.device || deviceInfo,
+          sessionTimeout: response.sessionTimeout || 5,
           loginTime: new Date().toISOString(),
-          // Include any other relevant fields
-          ...(cashierData.shop && { shop: cashierData.shop }),
-          ...(cashierData.permissions && { permissions: cashierData.permissions })
+          deviceId: deviceInfo.deviceId
         };
         
-        // Store in localStorage - FIXED: Using correct key and structure
         localStorage.setItem('cashierData', JSON.stringify(authData));
+        localStorage.setItem('cashierToken', response.token);
+        localStorage.setItem('sessionToken', response.token);
+        localStorage.setItem('deviceId', deviceInfo.deviceId);
         
-        console.log('✅ Cashier login successful - Stored data:', authData);
+        console.log('✅ Login successful - Stored data:', authData);
         console.log('👤 Logged in as:', authData.name);
         console.log('🎯 Role:', authData.role);
+        console.log('📱 Device:', authData.device.deviceName);
         
-        // FIXED: Redirect to SHOP SELECTION first, not dashboard
+        // Navigate to shop selection
         navigate('/cashier/shops', { 
           replace: true,
           state: { 
             loginSuccess: true,
-            cashierName: authData.name
+            cashierName: authData.name,
+            deviceInfo: deviceInfo
           }
         });
-        
-      } else {
-        // FIXED: Use the message from responseData if available
-        const errorMessage = responseData.message || 'Login failed. Please check your credentials.';
-        throw new Error(errorMessage);
       }
+      
     } catch (err) {
-      console.error('❌ Cashier login error:', err);
+      console.error('❌ Login error:', err);
       
-      // Enhanced error handling
+      // Handle verification required
+      if (err.response?.data?.requiresVerification) {
+        setVerificationRequired(true);
+        setVerificationData(err.response.data);
+        setShowDeviceDialog(true);
+        setLoading(false);
+        return;
+      }
+      
+      // Handle session expired
+      if (err.response?.data?.code === 'SESSION_EXPIRED') {
+        setError('Session expired due to inactivity. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Network errors
       if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
-        setError('Cannot connect to server. Please check if backend is running on port 5001.');
+        setError('Cannot connect to server. Please check if backend is running.');
+        setLoading(false);
         return;
       }
       
-      if (err.code === 'ECONNABORTED') {
-        setError('Request timeout. Server may be busy. Please try again.');
-        return;
-      }
-      
-      if (err.response) {
-        const status = err.response.status;
-        const errorData = err.response.data || {};
-        const errorMessage = errorData.message || err.message;
-        
-        switch (status) {
-          case 401:
-            setError('Invalid email or password. Please try again.');
-            break;
-          case 403:
-            setError('Access denied. You do not have cashier privileges.');
-            break;
-          case 404:
-            setError('Cashier account not found. Please contact administrator.');
-            break;
-          case 500:
-            setError('Server error. Please try again later.');
-            break;
-          default:
-            setError(errorMessage || `Login failed (Status: ${status})`);
-        }
-      } else {
-        // FIXED: Use the actual error message from the caught error
-        setError(err.message || 'An unexpected error occurred. Please try again.');
-      }
+      // Other errors
+      setError(err.response?.data?.message || err.message || 'Login failed. Please try again.');
+      setLoading(false);
     } finally {
       setLoading(false);
+      setIsCheckingDevice(false);
     }
   };
 
@@ -215,7 +401,6 @@ const CashierLogin = () => {
       [name]: value 
     }));
     
-    // Clear error when user starts typing
     if (error) {
       setError(null);
     }
@@ -234,6 +419,200 @@ const CashierLogin = () => {
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
+
+  // Render device verification dialog
+  const renderVerificationDialog = () => (
+    <Dialog
+      open={showDeviceDialog}
+      onClose={() => {}} // Prevent closing by clicking outside
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 3
+        }
+      }}
+    >
+      <DialogTitle sx={{ 
+        background: colors.primary.gradient,
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1,
+        py: 2
+      }}>
+        <Security />
+        <Typography variant="h6" fontWeight="bold">Device Verification Required</Typography>
+      </DialogTitle>
+      
+      <DialogContent sx={{ mt: 2, pt: 2 }}>
+        <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+          This is a new device. Please wait for admin approval.
+        </Alert>
+        
+        <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+          Device Information:
+        </Typography>
+        
+        <Paper sx={{ 
+          p: 2, 
+          mb: 3, 
+          bgcolor: 'rgba(255,255,255,0.05)',
+          borderRadius: 2
+        }}>
+          <List dense>
+            <ListItem>
+              <ListItemIcon sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                {getDeviceIcon(verificationData?.deviceInfo?.deviceType)}
+              </ListItemIcon>
+              <ListItemText 
+                primary={verificationData?.deviceInfo?.deviceName || 'Unknown Device'}
+                secondary={`${verificationData?.deviceInfo?.os || 'Unknown OS'} • ${verificationData?.deviceInfo?.browser || 'Unknown Browser'}`}
+                primaryTypographyProps={{ color: 'white' }}
+                secondaryTypographyProps={{ color: 'rgba(255,255,255,0.5)' }}
+              />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                <Security />
+              </ListItemIcon>
+              <ListItemText 
+                primary="MAC Address"
+                secondary={verificationData?.deviceInfo?.macAddress || 'Unknown'}
+                primaryTypographyProps={{ color: 'rgba(255,255,255,0.7)', variant: 'caption' }}
+                secondaryTypographyProps={{ color: 'rgba(255,255,255,0.5)', sx: { fontFamily: 'monospace' } }}
+              />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                <Computer />
+              </ListItemIcon>
+              <ListItemText 
+                primary="IP Address"
+                secondary={verificationData?.deviceInfo?.ipAddress || 'Unknown'}
+                primaryTypographyProps={{ color: 'rgba(255,255,255,0.7)', variant: 'caption' }}
+                secondaryTypographyProps={{ color: 'rgba(255,255,255,0.5)', sx: { fontFamily: 'monospace' } }}
+              />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                <Refresh />
+              </ListItemIcon>
+              <ListItemText 
+                primary="Login Time"
+                secondary={new Date().toLocaleString()}
+                primaryTypographyProps={{ color: 'rgba(255,255,255,0.7)', variant: 'caption' }}
+                secondaryTypographyProps={{ color: 'rgba(255,255,255,0.5)' }}
+              />
+            </ListItem>
+          </List>
+        </Paper>
+        
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" color="textSecondary" gutterBottom>
+            Verification Status:
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Chip 
+              icon={<Pending />}
+              label="Pending Approval"
+              color="warning"
+              size="small"
+            />
+            <Chip 
+              label={`Expires in ${Math.floor(timeUntilInactivity / 60)}:${String(timeUntilInactivity % 60).padStart(2, '0')}`}
+              variant="outlined"
+              size="small"
+              sx={{ 
+                borderColor: timeUntilInactivity < 60 ? '#ef4444' : 'rgba(255,255,255,0.3)',
+                color: timeUntilInactivity < 60 ? '#ef4444' : 'rgba(255,255,255,0.7)'
+              }}
+            />
+          </Box>
+          
+          {inactivityWarning && timeUntilInactivity <= 60 && (
+            <Box sx={{ mt: 1 }}>
+              <Alert severity="error" icon={<Warning />} sx={{ borderRadius: 2 }}>
+                Verification request expires in {timeUntilInactivity} seconds!
+              </Alert>
+            </Box>
+          )}
+        </Box>
+        
+        <LinearProgress 
+          variant="determinate" 
+          value={(timeUntilInactivity / 300) * 100}
+          color={timeUntilInactivity < 60 ? 'error' : 'warning'}
+          sx={{ 
+            height: 8, 
+            borderRadius: 4, 
+            mb: 2,
+            bgcolor: 'rgba(255,255,255,0.1)',
+            '& .MuiLinearProgress-bar': {
+              borderRadius: 4
+            }
+          }}
+        />
+        
+        <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.1)' }} />
+        
+        <Box sx={{ 
+          bgcolor: 'rgba(254, 243, 199, 0.1)', 
+          p: 2, 
+          borderRadius: 2,
+          border: '1px solid rgba(254, 243, 199, 0.2)'
+        }}>
+          <Typography variant="caption" sx={{ color: '#FCD34D' }}>
+            <strong>📋 What happens next?</strong><br />
+            1. An admin has been notified of this login attempt<br />
+            2. The admin will review the device information<br />
+            3. You will receive an email when approved<br />
+            4. You can then login from this device
+          </Typography>
+        </Box>
+      </DialogContent>
+      
+      <DialogActions sx={{ p: 3, pt: 0 }}>
+        <Button
+          variant="outlined"
+          onClick={() => {
+            setShowDeviceDialog(false);
+            setVerificationRequired(false);
+            setError('Please try again after admin approval.');
+          }}
+          sx={{
+            color: 'rgba(255,255,255,0.7)',
+            borderColor: 'rgba(255,255,255,0.2)',
+            '&:hover': {
+              borderColor: 'rgba(255,255,255,0.4)',
+              backgroundColor: 'rgba(255,255,255,0.05)'
+            }
+          }}
+        >
+          Close
+        </Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            setShowDeviceDialog(false);
+            setVerificationRequired(false);
+            // Try checking again
+            handleLogin(new Event('submit'));
+          }}
+          sx={{
+            background: colors.cashier.gradient,
+            '&:hover': {
+              background: colors.cashier.dark
+            }
+          }}
+        >
+          Check Status
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 
   return (
     <Container 
@@ -254,7 +633,8 @@ const CashierLogin = () => {
       <Box sx={{ 
         mb: 2,
         display: 'flex',
-        justifyContent: 'flex-start'
+        justifyContent: 'space-between',
+        alignItems: 'center'
       }}>
         <Button
           startIcon={<ArrowBack />}
@@ -266,10 +646,24 @@ const CashierLogin = () => {
               color: 'white'
             }
           }}
-          disabled={loading}
+          disabled={loading || isCheckingDevice}
         >
           Back to Main
         </Button>
+        
+        {deviceInfo && (
+          <Chip
+            icon={getDeviceIcon(deviceInfo.deviceType)}
+            label={deviceInfo.deviceName}
+            size="small"
+            sx={{ 
+              color: 'rgba(255, 255, 255, 0.7)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+              '& .MuiChip-icon': { color: 'rgba(255, 255, 255, 0.5)' }
+            }}
+            variant="outlined"
+          />
+        )}
       </Box>
 
       <Box 
@@ -289,7 +683,7 @@ const CashierLogin = () => {
           mb: 2,
           boxShadow: '0 8px 25px rgba(16, 185, 129, 0.3)'
         }}>
-          {loading ? (
+          {loading || isCheckingDevice ? (
             <CircularProgress size={24} color="inherit" />
           ) : (
             <PointOfSale sx={{ fontSize: 36 }} />
@@ -367,7 +761,7 @@ const CashierLogin = () => {
               value={credentials.email}
               onChange={handleChange}
               onKeyPress={handleKeyPress}
-              disabled={loading}
+              disabled={loading || isCheckingDevice || verificationRequired}
               autoComplete="email"
               autoFocus
               placeholder="Enter your email"
@@ -409,7 +803,7 @@ const CashierLogin = () => {
               value={credentials.password}
               onChange={handleChange}
               onKeyPress={handleKeyPress}
-              disabled={loading}
+              disabled={loading || isCheckingDevice || verificationRequired}
               autoComplete="current-password"
               placeholder="Enter your password"
               InputProps={{
@@ -434,7 +828,7 @@ const CashierLogin = () => {
                       onClick={togglePasswordVisibility}
                       onMouseDown={(e) => e.preventDefault()}
                       edge="end"
-                      disabled={loading}
+                      disabled={loading || isCheckingDevice || verificationRequired}
                       sx={{ 
                         color: 'rgba(255, 255, 255, 0.5)',
                         '&:hover': {
@@ -463,7 +857,7 @@ const CashierLogin = () => {
               fullWidth
               variant="contained"
               size="large"
-              disabled={loading || !credentials.email || !credentials.password}
+              disabled={loading || isCheckingDevice || verificationRequired || !credentials.email || !credentials.password}
               sx={{ 
                 mt: 3, 
                 mb: 2,
@@ -485,17 +879,61 @@ const CashierLogin = () => {
                 transition: 'all 0.3s ease'
               }}
             >
-              {loading ? (
+              {loading || isCheckingDevice ? (
                 <CircularProgress size={24} color="inherit" />
               ) : (
                 'Sign In'
               )}
             </Button>
+
+            {/* Security Info */}
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'center',
+              gap: 2,
+              flexWrap: 'wrap',
+              mt: 1
+            }}>
+              <Chip
+                icon={<Security fontSize="small" />}
+                label="Device Verified"
+                size="small"
+                variant="outlined"
+                sx={{ 
+                  borderColor: 'rgba(16, 185, 129, 0.3)',
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  '& .MuiChip-icon': { color: 'rgba(16, 185, 129, 0.6)' }
+                }}
+              />
+              <Chip
+                icon={<Computer fontSize="small" />}
+                label={`${deviceInfo?.os || 'Unknown OS'}`}
+                size="small"
+                variant="outlined"
+                sx={{ 
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  '& .MuiChip-icon': { color: 'rgba(255, 255, 255, 0.4)' }
+                }}
+              />
+              <Chip
+                icon={<Refresh fontSize="small" />}
+                label="5min timeout"
+                size="small"
+                variant="outlined"
+                sx={{ 
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  '& .MuiChip-icon': { color: 'rgba(255, 255, 255, 0.3)' }
+                }}
+              />
+            </Box>
           </Box>
         </Paper>
-
-        {/* Removed the instructional text as requested */}
       </Box>
+
+      {/* Device Verification Dialog */}
+      {renderVerificationDialog()}
     </Container>
   );
 };
