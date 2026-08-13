@@ -1,4 +1,4 @@
-// src/pages/Auth/CashierLogin.jsx - COMPLETE UPDATED VERSION
+// src/pages/Auth/CashierLogin.jsx - With Web Crypto API
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -44,10 +44,11 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { authAPI } from '../../services/api';
+import { generateDeviceId, generateMacAddress } from '../../utils/cryptoHelper';
 
 // ==================== DEVICE FINGERPRINTING ====================
 
-const getDeviceInfo = () => {
+const getDeviceInfo = async () => {
   const userAgent = navigator.userAgent;
   const platform = navigator.platform;
   const screenInfo = `${window.screen.width}x${window.screen.height}`;
@@ -131,21 +132,11 @@ const getDeviceInfo = () => {
     if (match) browserVersion = match[1];
   }
   
-  // Generate device ID (fingerprint)
-  const deviceId = require('crypto')
-    .createHash('sha256')
-    .update(`${userAgent}${platform}${screenInfo}${language}${timezone}`)
-    .digest('hex')
-    .substring(0, 32);
-  
-  // Generate MAC-like identifier (fingerprint)
-  const macAddress = require('crypto')
-    .createHash('sha256')
-    .update(`${userAgent}${screenInfo}${language}${timezone}`)
-    .digest('hex')
-    .substring(0, 17)
-    .toUpperCase()
-    .replace(/(.{2})(?=.)/g, '$1:');
+  // Generate device ID and MAC using Web Crypto API
+  const [deviceId, macAddress] = await Promise.all([
+    generateDeviceId(userAgent, platform, screenInfo, language, timezone),
+    generateMacAddress(userAgent, screenInfo, language, timezone)
+  ]);
   
   return {
     userAgent,
@@ -200,12 +191,12 @@ const CashierLogin = () => {
   const [timeUntilInactivity, setTimeUntilInactivity] = useState(300);
   const [inactivityWarning, setInactivityWarning] = useState(false);
   const [isCheckingDevice, setIsCheckingDevice] = useState(false);
+  const [deviceInfoLoaded, setDeviceInfoLoaded] = useState(false);
 
   // Check for auto-logout message
   useEffect(() => {
     if (location.state?.autoLogout) {
       setError(location.state.message || 'You were logged out due to inactivity.');
-      // Clear the state to prevent showing again
       window.history.replaceState({}, document.title);
     }
   }, [location]);
@@ -232,15 +223,41 @@ const CashierLogin = () => {
 
   // Get device info on mount
   useEffect(() => {
-    const info = getDeviceInfo();
-    setDeviceInfo(info);
-    console.log('📱 Device Info:', info);
+    const getDeviceInfoAsync = async () => {
+      try {
+        const info = await getDeviceInfo();
+        setDeviceInfo(info);
+        setDeviceInfoLoaded(true);
+        console.log('📱 Device Info:', info);
+        
+        const storedDeviceId = localStorage.getItem('deviceId');
+        if (storedDeviceId && storedDeviceId === info.deviceId) {
+          console.log('✅ Device previously verified');
+        }
+      } catch (error) {
+        console.error('❌ Error getting device info:', error);
+        // Fallback with basic info
+        setDeviceInfo({
+          userAgent: navigator.userAgent,
+          deviceId: 'fallback-' + Date.now(),
+          os: 'Unknown',
+          osVersion: 'Unknown',
+          browser: 'Unknown',
+          browserVersion: 'Unknown',
+          deviceType: 'unknown',
+          deviceName: 'Unknown Device',
+          macAddress: '00:00:00:00:00:00',
+          screenResolution: `${window.screen.width}x${window.screen.height}`,
+          platform: navigator.platform,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          language: navigator.language,
+          loginTime: new Date().toISOString()
+        });
+        setDeviceInfoLoaded(true);
+      }
+    };
     
-    // Check if device was previously verified
-    const storedDeviceId = localStorage.getItem('deviceId');
-    if (storedDeviceId && storedDeviceId === info.deviceId) {
-      console.log('✅ Device previously verified');
-    }
+    getDeviceInfoAsync();
   }, []);
 
   // Inactivity timer for verification
@@ -285,6 +302,11 @@ const CashierLogin = () => {
       return;
     }
     
+    if (!deviceInfoLoaded) {
+      setError('Please wait for device information to load...');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
@@ -318,13 +340,13 @@ const CashierLogin = () => {
       // STEP 2: Device is verified, proceed with login
       const response = await authAPI.cashierLogin({
         email: credentials.email,
-        password: credentials.password
+        password: credentials.password,
+        deviceId: deviceInfo.deviceId
       });
       
       console.log('✅ Login response:', response);
       
       if (response.success) {
-        // Store session data with device info
         const authData = {
           _id: response.user._id,
           name: response.user.name,
@@ -344,11 +366,7 @@ const CashierLogin = () => {
         localStorage.setItem('deviceId', deviceInfo.deviceId);
         
         console.log('✅ Login successful - Stored data:', authData);
-        console.log('👤 Logged in as:', authData.name);
-        console.log('🎯 Role:', authData.role);
-        console.log('📱 Device:', authData.device.deviceName);
         
-        // Navigate to shop selection
         navigate('/cashier/shops', { 
           replace: true,
           state: { 
@@ -362,7 +380,6 @@ const CashierLogin = () => {
     } catch (err) {
       console.error('❌ Login error:', err);
       
-      // Handle verification required
       if (err.response?.data?.requiresVerification) {
         setVerificationRequired(true);
         setVerificationData(err.response.data);
@@ -371,21 +388,18 @@ const CashierLogin = () => {
         return;
       }
       
-      // Handle session expired
       if (err.response?.data?.code === 'SESSION_EXPIRED') {
         setError('Session expired due to inactivity. Please login again.');
         setLoading(false);
         return;
       }
       
-      // Network errors
       if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
         setError('Cannot connect to server. Please check if backend is running.');
         setLoading(false);
         return;
       }
       
-      // Other errors
       setError(err.response?.data?.message || err.message || 'Login failed. Please try again.');
       setLoading(false);
     } finally {
@@ -424,7 +438,7 @@ const CashierLogin = () => {
   const renderVerificationDialog = () => (
     <Dialog
       open={showDeviceDialog}
-      onClose={() => {}} // Prevent closing by clicking outside
+      onClose={() => {}}
       maxWidth="sm"
       fullWidth
       PaperProps={{
@@ -452,7 +466,7 @@ const CashierLogin = () => {
           This is a new device. Please wait for admin approval.
         </Alert>
         
-        <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
           Device Information:
         </Typography>
         
@@ -511,7 +525,7 @@ const CashierLogin = () => {
         </Paper>
         
         <Box sx={{ mb: 2 }}>
-          <Typography variant="body2" color="textSecondary" gutterBottom>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }} gutterBottom>
             Verification Status:
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -598,7 +612,6 @@ const CashierLogin = () => {
           onClick={() => {
             setShowDeviceDialog(false);
             setVerificationRequired(false);
-            // Try checking again
             handleLogin(new Event('submit'));
           }}
           sx={{
@@ -651,7 +664,7 @@ const CashierLogin = () => {
           Back to Main
         </Button>
         
-        {deviceInfo && (
+        {deviceInfo && deviceInfoLoaded && (
           <Chip
             icon={getDeviceIcon(deviceInfo.deviceType)}
             label={deviceInfo.deviceName}
