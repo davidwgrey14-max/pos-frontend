@@ -34,8 +34,7 @@ import {
   FilterOutlined,
   BankOutlined,
   CreditCardFilled,
-  WalletOutlined,
-  AreaChartOutlined
+  WalletOutlined
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { 
@@ -45,26 +44,6 @@ import {
 } from '../../services/api';
 import { CalculationUtils } from '../../utils/calculationUtils';
 import './AdminDashboard.css';
-
-// Import Chart components
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  Legend,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  ComposedChart
-} from 'recharts';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -112,9 +91,6 @@ const AdminDashboard = () => {
     autoRefresh: false
   });
   const [filterVisible, setFilterVisible] = useState(false);
-
-  // Chart colors
-  const COLORS = ['#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#3498db'];
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -247,297 +223,149 @@ const AdminDashboard = () => {
     }
   };
 
-  // ENHANCED: Dashboard data processing aligned with Transaction Report
-  const processDashboardData = (comprehensiveData, shops, activeFilters) => {
-    console.log('🔄 Processing dashboard data with unified structure...');
-    
-    // Use the same data processing as Transaction Report
-    const processedData = CalculationUtils.processComprehensiveData(
-      comprehensiveData, 
-      activeFilters.shop === 'all' ? null : activeFilters.shop,
-      { 
-        includePerformance: true,
-        includeProducts: true 
-      }
+// ENHANCED: Dashboard data processing aligned with Transaction Report
+const processDashboardData = (comprehensiveData, shops, activeFilters) => {
+  console.log('🔄 Processing dashboard data with unified structure...');
+  
+  // Use the same data processing as Transaction Report
+  const processedData = CalculationUtils.processComprehensiveData(
+    comprehensiveData, 
+    activeFilters.shop === 'all' ? null : activeFilters.shop,
+    { 
+      includePerformance: true,
+      includeProducts: true 
+    }
+  );
+
+  // Extract data from processed structure
+  const transactions = processedData.salesWithProfit || [];
+  const financialStats = processedData.financialStats || CalculationUtils.getDefaultStatsWithCreditManagement();
+  const products = processedData.products || [];
+  const expenses = processedData.expenses || [];
+  const credits = processedData.credits || [];
+  const cashiers = processedData.cashiers || [];
+
+  console.log('📈 Processed data extracted:', {
+    transactions: transactions.length,
+    products: products.length,
+    expenses: expenses.length,
+    credits: credits.length,
+    cashiers: cashiers.length
+  });
+
+  // Apply date range filter to transactions if needed
+  let filteredTransactions = transactions;
+  if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
+    filteredTransactions = CalculationUtils.filterDataByDateRange(
+      transactions,
+      activeFilters.dateRange[0],
+      activeFilters.dateRange[1],
+      'saleDate'
     );
+  }
 
-    // Extract data from processed structure
-    const transactions = processedData.salesWithProfit || [];
-    const financialStats = processedData.financialStats || CalculationUtils.getDefaultStatsWithCreditManagement();
-    const products = processedData.products || [];
-    const expenses = processedData.expenses || [];
-    const credits = processedData.credits || [];
-    const cashiers = processedData.cashiers || [];
+  // Recent transactions (last 10)
+  const recentTransactions = filteredTransactions
+    .sort((a, b) => new Date(b.saleDate || b.createdAt) - new Date(a.saleDate || a.createdAt))
+    .slice(0, 10);
 
-    console.log('📈 Processed data extracted:', {
-      transactions: transactions.length,
+  // Low stock products
+  const lowStockProducts = products.filter(p => 
+    CalculationUtils.safeNumber(p.currentStock) <= CalculationUtils.safeNumber(p.minStockLevel, 5)
+  ).slice(0, 5);
+
+  // Top products using same calculation as Transaction Report
+  const topProducts = CalculationUtils.calculateTopProducts(filteredTransactions, 5);
+
+  // Shop performance using same calculation as Transaction Report
+  const shopPerformance = CalculationUtils.calculateShopPerformance(filteredTransactions, shops);
+
+  // Cashier performance using same calculation as Transaction Report
+  const cashierPerformance = CalculationUtils.calculateCashierPerformance(filteredTransactions, cashiers);
+
+  // Credit alerts (overdue credits)
+  const creditAlerts = credits
+    .filter(credit => {
+      const isOverdue = credit.dueDate && new Date(credit.dueDate) < new Date() && 
+                       CalculationUtils.safeNumber(credit.balanceDue) > 0;
+      
+      // Apply shop filter if needed
+      if (activeFilters.shop && activeFilters.shop !== 'all') {
+        const creditShopId = credit.shopId || (credit.shop && typeof credit.shop === 'object' ? credit.shop._id : credit.shop);
+        return isOverdue && creditShopId === activeFilters.shop;
+      }
+      
+      return isOverdue;
+    })
+    .slice(0, 5);
+
+  // ENHANCE COGS CALCULATION: Use the same robust calculation as in calculateFinancialStatsWithCreditManagement
+  const costOfGoodsSold = financialStats.costOfGoodsSold || 
+                         filteredTransactions.reduce((sum, t) => {
+                           // Calculate from transaction cost or items using the same logic as in main calculations
+                           if (t.cost) {
+                             return sum + CalculationUtils.safeNumber(t.cost);
+                           }
+                           
+                           // Calculate from items as fallback using the utility function
+                           return sum + CalculationUtils.calculateCostFromItems(t);
+                         }, 0);
+
+  // Enhanced financial stats with additional calculations
+  const enhancedFinancialStats = {
+    ...financialStats,
+    // Ensure all required fields are present
+    totalRevenue: financialStats.totalRevenue || 0,
+    netProfit: financialStats.netProfit || 0,
+    totalSales: financialStats.totalSales || filteredTransactions.length,
+    creditSales: financialStats.creditSales || filteredTransactions.filter(t => t.isCreditTransaction).reduce((sum, t) => sum + (t.totalAmount || 0), 0),
+    nonCreditSales: financialStats.nonCreditSales || filteredTransactions.filter(t => !t.isCreditTransaction).reduce((sum, t) => sum + (t.totalAmount || 0), 0),
+    outstandingCredit: financialStats.outstandingCredit || filteredTransactions.filter(t => t.isCreditTransaction).reduce((sum, t) => sum + (t.outstandingRevenue || 0), 0),
+    totalExpenses: financialStats.totalExpenses || expenses.reduce((sum, e) => sum + CalculationUtils.safeNumber(e.amount), 0),
+    
+    // Use the enhanced COGS calculation
+    costOfGoodsSold: parseFloat(costOfGoodsSold.toFixed(2)),
+    
+    // Recalculate gross profit and profit margin with accurate COGS
+    grossProfit: financialStats.grossProfit || parseFloat((enhancedFinancialStats.totalRevenue - costOfGoodsSold).toFixed(2)),
+    profitMargin: financialStats.profitMargin || CalculationUtils.calculateProfitMargin(enhancedFinancialStats.totalRevenue, enhancedFinancialStats.grossProfit)
+  };
+
+  // Recalculate net profit with accurate expenses and COGS
+  if (!financialStats.netProfit) {
+    enhancedFinancialStats.netProfit = parseFloat((enhancedFinancialStats.grossProfit - enhancedFinancialStats.totalExpenses).toFixed(2));
+  }
+
+  // Business stats
+  const businessStats = {
+    totalProducts: products.length,
+    totalShops: shops.length,
+    totalCashiers: cashiers.length,
+    lowStockCount: lowStockProducts.length,
+    activeCredits: credits.filter(c => c.status !== 'paid' && CalculationUtils.safeNumber(c.balanceDue) > 0).length
+  };
+
+  return {
+    financialStats: enhancedFinancialStats,
+    businessStats,
+    recentTransactions,
+    lowStockProducts,
+    topProducts,
+    shopPerformance,
+    cashierPerformance,
+    creditAlerts,
+    timestamp: new Date().toISOString(),
+    appliedFilters: activeFilters,
+    dataSources: {
+      transactions: filteredTransactions.length,
       products: products.length,
       expenses: expenses.length,
       credits: credits.length,
+      shops: shops.length,
       cashiers: cashiers.length
-    });
-
-    // Apply date range filter to transactions if needed
-    let filteredTransactions = transactions;
-    if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
-      filteredTransactions = CalculationUtils.filterDataByDateRange(
-        transactions,
-        activeFilters.dateRange[0],
-        activeFilters.dateRange[1],
-        'saleDate'
-      );
     }
-
-    // Recent transactions (last 10)
-    const recentTransactions = filteredTransactions
-      .sort((a, b) => new Date(b.saleDate || b.createdAt) - new Date(a.saleDate || a.createdAt))
-      .slice(0, 10);
-
-    // Low stock products
-    const lowStockProducts = products.filter(p => 
-      CalculationUtils.safeNumber(p.currentStock) <= CalculationUtils.safeNumber(p.minStockLevel, 5)
-    ).slice(0, 5);
-
-    // Top products using same calculation as Transaction Report
-    const topProducts = CalculationUtils.calculateTopProducts(filteredTransactions, 5);
-
-    // Shop performance using same calculation as Transaction Report
-    const shopPerformance = CalculationUtils.calculateShopPerformance(filteredTransactions, shops);
-
-    // Cashier performance using same calculation as Transaction Report
-    const cashierPerformance = CalculationUtils.calculateCashierPerformance(filteredTransactions, cashiers);
-
-    // Credit alerts (overdue credits)
-    const creditAlerts = credits
-      .filter(credit => {
-        const isOverdue = credit.dueDate && new Date(credit.dueDate) < new Date() && 
-                         CalculationUtils.safeNumber(credit.balanceDue) > 0;
-        
-        // Apply shop filter if needed
-        if (activeFilters.shop && activeFilters.shop !== 'all') {
-          const creditShopId = credit.shopId || (credit.shop && typeof credit.shop === 'object' ? credit.shop._id : credit.shop);
-          return isOverdue && creditShopId === activeFilters.shop;
-        }
-        
-        return isOverdue;
-      })
-      .slice(0, 5);
-
-    // ENHANCE COGS CALCULATION
-    const costOfGoodsSold = financialStats.costOfGoodsSold || 
-                           filteredTransactions.reduce((sum, t) => {
-                             if (t.cost) {
-                               return sum + CalculationUtils.safeNumber(t.cost);
-                             }
-                             return sum + CalculationUtils.calculateCostFromItems(t);
-                           }, 0);
-
-    // Enhanced financial stats with additional calculations
-    const enhancedFinancialStats = {
-      ...financialStats,
-      totalRevenue: financialStats.totalRevenue || 0,
-      netProfit: financialStats.netProfit || 0,
-      totalSales: financialStats.totalSales || filteredTransactions.length,
-      creditSales: financialStats.creditSales || filteredTransactions.filter(t => t.isCreditTransaction).reduce((sum, t) => sum + (t.totalAmount || 0), 0),
-      nonCreditSales: financialStats.nonCreditSales || filteredTransactions.filter(t => !t.isCreditTransaction).reduce((sum, t) => sum + (t.totalAmount || 0), 0),
-      outstandingCredit: financialStats.outstandingCredit || filteredTransactions.filter(t => t.isCreditTransaction).reduce((sum, t) => sum + (t.outstandingRevenue || 0), 0),
-      totalExpenses: financialStats.totalExpenses || expenses.reduce((sum, e) => sum + CalculationUtils.safeNumber(e.amount), 0),
-      costOfGoodsSold: parseFloat(costOfGoodsSold.toFixed(2)),
-      grossProfit: financialStats.grossProfit || parseFloat((enhancedFinancialStats.totalRevenue - costOfGoodsSold).toFixed(2)),
-      profitMargin: financialStats.profitMargin || CalculationUtils.calculateProfitMargin(enhancedFinancialStats.totalRevenue, enhancedFinancialStats.grossProfit)
-    };
-
-    // Recalculate net profit with accurate expenses and COGS
-    if (!financialStats.netProfit) {
-      enhancedFinancialStats.netProfit = parseFloat((enhancedFinancialStats.grossProfit - enhancedFinancialStats.totalExpenses).toFixed(2));
-    }
-
-    // Business stats
-    const businessStats = {
-      totalProducts: products.length,
-      totalShops: shops.length,
-      totalCashiers: cashiers.length,
-      lowStockCount: lowStockProducts.length,
-      activeCredits: credits.filter(c => c.status !== 'paid' && CalculationUtils.safeNumber(c.balanceDue) > 0).length
-    };
-
-    return {
-      financialStats: enhancedFinancialStats,
-      businessStats,
-      recentTransactions,
-      lowStockProducts,
-      topProducts,
-      shopPerformance,
-      cashierPerformance,
-      creditAlerts,
-      timestamp: new Date().toISOString(),
-      appliedFilters: activeFilters,
-      dataSources: {
-        transactions: filteredTransactions.length,
-        products: products.length,
-        expenses: expenses.length,
-        credits: credits.length,
-        shops: shops.length,
-        cashiers: cashiers.length
-      },
-      // Store raw data for charts
-      rawTransactions: filteredTransactions,
-      rawShops: shops,
-      rawCashiers: cashiers,
-      rawCredits: credits,
-      rawExpenses: expenses,
-      rawProducts: products
-    };
   };
-
-  // ==================== CHART DATA PREPARATION ====================
-
-  // Prepare daily revenue data
-  const prepareDailyRevenueData = () => {
-    const transactions = dashboardData.rawTransactions || [];
-    const dailyMap = {};
-    
-    transactions.forEach(transaction => {
-      const date = transaction.saleDate ? new Date(transaction.saleDate).toLocaleDateString() : 'Unknown';
-      if (!dailyMap[date]) {
-        dailyMap[date] = {
-          date,
-          revenue: 0,
-          creditRevenue: 0,
-          cashRevenue: 0,
-          mpesaRevenue: 0,
-          transactions: 0,
-          profit: 0
-        };
-      }
-      
-      const amount = CalculationUtils.safeNumber(transaction.totalAmount);
-      const profit = CalculationUtils.safeNumber(transaction.profit);
-      dailyMap[date].revenue += amount;
-      dailyMap[date].profit += profit;
-      dailyMap[date].transactions += 1;
-      
-      if (transaction.isCreditTransaction) {
-        dailyMap[date].creditRevenue += amount;
-      } else if (transaction.paymentMethod === 'cash') {
-        dailyMap[date].cashRevenue += amount;
-      } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transaction.paymentMethod)) {
-        dailyMap[date].mpesaRevenue += amount;
-      }
-    });
-    
-    return Object.values(dailyMap).sort((a, b) => new Date(a.date) - new Date(b.date));
-  };
-
-  // Prepare shop performance chart data
-  const prepareShopChartData = () => {
-    const shops = dashboardData.shopPerformance || [];
-    return shops.map(shop => ({
-      name: shop.name || 'Unknown',
-      revenue: CalculationUtils.safeNumber(shop.revenue),
-      profit: CalculationUtils.safeNumber(shop.profit),
-      transactions: CalculationUtils.safeNumber(shop.transactions)
-    })).sort((a, b) => b.revenue - a.revenue);
-  };
-
-  // Prepare payment method distribution
-  const preparePaymentDistribution = () => {
-    const transactions = dashboardData.rawTransactions || [];
-    const distribution = {
-      cash: 0,
-      mpesa_bank: 0,
-      credit: 0
-    };
-    
-    transactions.forEach(transaction => {
-      if (transaction.isCreditTransaction) {
-        distribution.credit += CalculationUtils.safeNumber(transaction.totalAmount);
-      } else if (transaction.paymentMethod === 'cash') {
-        distribution.cash += CalculationUtils.safeNumber(transaction.totalAmount);
-      } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transaction.paymentMethod)) {
-        distribution.mpesa_bank += CalculationUtils.safeNumber(transaction.totalAmount);
-      }
-    });
-    
-    return [
-      { name: 'Cash', value: distribution.cash, color: '#2ecc71' },
-      { name: 'M-Pesa/Bank', value: distribution.mpesa_bank, color: '#3498db' },
-      { name: 'Credit', value: distribution.credit, color: '#e74c3c' }
-    ].filter(item => item.value > 0);
-  };
-
-  // Prepare top products chart data
-  const prepareTopProductsChartData = () => {
-    const products = dashboardData.topProducts || [];
-    return products.slice(0, 5).map(product => ({
-      name: product.name || 'Unknown',
-      revenue: CalculationUtils.safeNumber(product.totalRevenue),
-      profit: CalculationUtils.safeNumber(product.totalProfit),
-      units: CalculationUtils.safeNumber(product.totalSold)
-    }));
-  };
-
-  // Prepare credit status distribution
-  const prepareCreditStatusData = () => {
-    const credits = dashboardData.rawCredits || [];
-    const statusMap = {
-      paid: 0,
-      partially_paid: 0,
-      pending: 0,
-      overdue: 0
-    };
-    
-    credits.forEach(credit => {
-      const status = credit.status || 'pending';
-      if (statusMap[status] !== undefined) {
-        statusMap[status] += CalculationUtils.safeNumber(credit.balanceDue);
-      }
-    });
-    
-    return Object.entries(statusMap)
-      .filter(([_, value]) => value > 0)
-      .map(([name, value]) => ({
-        name: name.replace('_', ' ').toUpperCase(),
-        value,
-        color: name === 'paid' ? '#2ecc71' : 
-               name === 'partially_paid' ? '#f39c12' : 
-               name === 'overdue' ? '#e74c3c' : '#3498db'
-      }));
-  };
-
-  // Prepare weekly trend data
-  const prepareWeeklyTrendData = () => {
-    const transactions = dashboardData.rawTransactions || [];
-    const weeklyMap = {};
-    
-    transactions.forEach(transaction => {
-      const date = transaction.saleDate ? new Date(transaction.saleDate) : new Date();
-      const weekStart = new Date(date);
-      weekStart.setDate(date.getDate() - date.getDay());
-      const weekKey = weekStart.toLocaleDateString();
-      
-      if (!weeklyMap[weekKey]) {
-        weeklyMap[weekKey] = {
-          week: weekKey,
-          revenue: 0,
-          profit: 0,
-          transactions: 0,
-          creditCount: 0
-        };
-      }
-      
-      weeklyMap[weekKey].revenue += CalculationUtils.safeNumber(transaction.totalAmount);
-      weeklyMap[weekKey].profit += CalculationUtils.safeNumber(transaction.profit);
-      weeklyMap[weekKey].transactions += 1;
-      if (transaction.isCreditTransaction) {
-        weeklyMap[weekKey].creditCount += 1;
-      }
-    });
-    
-    return Object.values(weeklyMap)
-      .sort((a, b) => new Date(a.week) - new Date(b.week))
-      .slice(-8); // Last 8 weeks
-  };
+};
 
   // Handle filter changes
   const handleFilterChange = (key, value) => {
@@ -906,16 +734,6 @@ const AdminDashboard = () => {
     }
   ];
 
-  // ==================== RENDER ====================
-
-  // Prepare chart data
-  const dailyRevenueData = prepareDailyRevenueData();
-  const shopChartData = prepareShopChartData();
-  const paymentDistribution = preparePaymentDistribution();
-  const topProductsChartData = prepareTopProductsChartData();
-  const creditStatusData = prepareCreditStatusData();
-  const weeklyTrendData = prepareWeeklyTrendData();
-
   return (
     <Layout style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
       <Sider 
@@ -979,6 +797,7 @@ const AdminDashboard = () => {
               PAMELA - ADMIN DASHBOARD
             </Title>
             <Space>
+              {/* Auto-refresh toggle */}
               <Tooltip title={filters.autoRefresh ? "Auto-refresh ON (30s)" : "Auto-refresh OFF"}>
                 <Button 
                   type={filters.autoRefresh ? "primary" : "default"}
@@ -1001,6 +820,7 @@ const AdminDashboard = () => {
                 Quick Refresh
               </Button>
               
+              {/* Filter button */}
               <Button 
                 icon={<FilterOutlined />}
                 onClick={() => setFilterVisible(!filterVisible)}
@@ -1059,7 +879,7 @@ const AdminDashboard = () => {
               animation: 'fadeIn 1s',
               textShadow: '2px 2px 4px rgba(0,0,0,0.1)'
             }}>
-              WELCOME Babe to ADMIN DASHBOARD
+              WELCOME  Babe to ADMIN DASHBOARD
             </div>
           )}
           
@@ -1243,6 +1063,7 @@ const AdminDashboard = () => {
                             </Card>
                           </Col>
 
+                          {/* NEW: Expense Metrics */}
                           <Col xs={24} sm={12} md={8} lg={6}>
                             <Card 
                               size="small" 
@@ -1291,6 +1112,7 @@ const AdminDashboard = () => {
                             </Card>
                           </Col>
 
+                          {/* NEW: Cost of Goods Sold */}
                           <Col xs={24} sm={12} md={8} lg={6}>
                             <Card 
                               size="small" 
@@ -1315,6 +1137,7 @@ const AdminDashboard = () => {
                             </Card>
                           </Col>
 
+                          {/* Credit Sales */}
                           <Col xs={24} sm={12} md={8} lg={6}>
                             <Card 
                               size="small" 
@@ -1339,6 +1162,7 @@ const AdminDashboard = () => {
                             </Card>
                           </Col>
 
+                          {/* Payment Methods */}
                           <Col xs={24} sm={12} md={8} lg={6}>
                             <Card 
                               size="small" 
@@ -1387,337 +1211,6 @@ const AdminDashboard = () => {
                             </Card>
                           </Col>
                         </Row>
-                      </Card>
-                    </Col>
-                  </Row>
-
-                  {/* ==================== GRAPHS SECTION ==================== */}
-                  <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                    <Col span={24}>
-                      <Card 
-                        title={
-                          <Space>
-                            <AreaChartOutlined style={{ color: '#9b59b6', fontSize: '20px' }} />
-                            <Text strong style={{ fontSize: '18px', color: '#2c3e50' }}>Analytics & Charts</Text>
-                            {filters.dateRange && (
-                              <Text type="secondary" style={{ fontSize: '12px', marginLeft: 8 }}>
-                                ({filters.dateRange[0].format('YYYY-MM-DD')} - {filters.dateRange[1].format('YYYY-MM-DD')})
-                              </Text>
-                            )}
-                          </Space>
-                        }
-                        style={{ 
-                          borderRadius: '12px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                          border: 'none'
-                        }}
-                        bodyStyle={{ padding: '16px' }}
-                      >
-                        {/* Daily Revenue Trend */}
-                        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                          <Col span={24}>
-                            <Card 
-                              size="small"
-                              title={
-                                <Space>
-                                  <LineChartOutlined style={{ color: '#3498db' }} />
-                                  <Text strong>Daily Revenue Trend</Text>
-                                </Space>
-                              }
-                              style={{ borderRadius: '8px' }}
-                            >
-                              {dailyRevenueData.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={300}>
-                                  <ComposedChart data={dailyRevenueData}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="date" />
-                                    <YAxis />
-                                    <RechartsTooltip 
-                                      formatter={(value) => CalculationUtils.formatCurrency(value)}
-                                      labelFormatter={(label) => `Date: ${label}`}
-                                    />
-                                    <Legend />
-                                    <Area 
-                                      type="monotone" 
-                                      dataKey="revenue" 
-                                      stroke="#3498db" 
-                                      fill="#3498db" 
-                                      fillOpacity={0.3}
-                                      name="Revenue"
-                                    />
-                                    <Line 
-                                      type="monotone" 
-                                      dataKey="profit" 
-                                      stroke="#2ecc71" 
-                                      name="Profit"
-                                    />
-                                    <Bar 
-                                      dataKey="transactions" 
-                                      fill="#f39c12" 
-                                      name="Transactions" 
-                                      yAxisId="right"
-                                    />
-                                  </ComposedChart>
-                                </ResponsiveContainer>
-                              ) : (
-                                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                                  <Text>No daily revenue data available</Text>
-                                </div>
-                              )}
-                            </Card>
-                          </Col>
-                        </Row>
-
-                        {/* Payment Distribution & Credit Status */}
-                        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                          <Col xs={24} lg={12}>
-                            <Card 
-                              size="small"
-                              title={
-                                <Space>
-                                  <PieChartOutlined style={{ color: '#2ecc71' }} />
-                                  <Text strong>Payment Distribution</Text>
-                                </Space>
-                              }
-                              style={{ borderRadius: '8px', height: '100%' }}
-                            >
-                              {paymentDistribution.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={250}>
-                                  <PieChart>
-                                    <Pie
-                                      data={paymentDistribution}
-                                      cx="50%"
-                                      cy="50%"
-                                      labelLine={false}
-                                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                                      outerRadius={80}
-                                      fill="#8884d8"
-                                      dataKey="value"
-                                    >
-                                      {paymentDistribution.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
-                                      ))}
-                                    </Pie>
-                                    <RechartsTooltip 
-                                      formatter={(value) => CalculationUtils.formatCurrency(value)}
-                                    />
-                                    <Legend />
-                                  </PieChart>
-                                </ResponsiveContainer>
-                              ) : (
-                                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                                  <Text>No payment data available</Text>
-                                </div>
-                              )}
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} lg={12}>
-                            <Card 
-                              size="small"
-                              title={
-                                <Space>
-                                  <CreditCardOutlined style={{ color: '#e74c3c' }} />
-                                  <Text strong>Credit Status Distribution</Text>
-                                </Space>
-                              }
-                              style={{ borderRadius: '8px', height: '100%' }}
-                            >
-                              {creditStatusData.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={250}>
-                                  <PieChart>
-                                    <Pie
-                                      data={creditStatusData}
-                                      cx="50%"
-                                      cy="50%"
-                                      labelLine={false}
-                                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                                      outerRadius={80}
-                                      fill="#8884d8"
-                                      dataKey="value"
-                                    >
-                                      {creditStatusData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                      ))}
-                                    </Pie>
-                                    <RechartsTooltip 
-                                      formatter={(value) => CalculationUtils.formatCurrency(value)}
-                                    />
-                                    <Legend />
-                                  </PieChart>
-                                </ResponsiveContainer>
-                              ) : (
-                                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                                  <Text>No credit data available</Text>
-                                </div>
-                              )}
-                            </Card>
-                          </Col>
-                        </Row>
-
-                        {/* Shop Performance & Top Products Charts */}
-                        <Row gutter={[16, 16]}>
-                          <Col xs={24} lg={12}>
-                            <Card 
-                              size="small"
-                              title={
-                                <Space>
-                                  <ShopOutlined style={{ color: '#9b59b6' }} />
-                                  <Text strong>Shop Performance</Text>
-                                </Space>
-                              }
-                              style={{ borderRadius: '8px', height: '100%' }}
-                            >
-                              {shopChartData.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={250}>
-                                  <BarChart data={shopChartData}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="name" />
-                                    <YAxis />
-                                    <RechartsTooltip 
-                                      formatter={(value) => CalculationUtils.formatCurrency(value)}
-                                    />
-                                    <Legend />
-                                    <Bar dataKey="revenue" fill="#3498db" name="Revenue" />
-                                    <Bar dataKey="profit" fill="#2ecc71" name="Profit" />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              ) : (
-                                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                                  <Text>No shop performance data available</Text>
-                                </div>
-                              )}
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} lg={12}>
-                            <Card 
-                              size="small"
-                              title={
-                                <Space>
-                                  <ProductOutlined style={{ color: '#e67e22' }} />
-                                  <Text strong>Top Selling Products</Text>
-                                </Space>
-                              }
-                              style={{ borderRadius: '8px', height: '100%' }}
-                            >
-                              {topProductsChartData.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={250}>
-                                  <BarChart data={topProductsChartData} layout="vertical">
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis type="number" />
-                                    <YAxis type="category" dataKey="name" width={80} />
-                                    <RechartsTooltip 
-                                      formatter={(value) => CalculationUtils.formatCurrency(value)}
-                                    />
-                                    <Legend />
-                                    <Bar dataKey="revenue" fill="#3498db" name="Revenue" />
-                                    <Bar dataKey="profit" fill="#2ecc71" name="Profit" />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              ) : (
-                                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                                  <Text>No product data available</Text>
-                                </div>
-                              )}
-                            </Card>
-                          </Col>
-                        </Row>
-
-                        {/* Weekly Trend */}
-                        {weeklyTrendData.length > 0 && (
-                          <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-                            <Col span={24}>
-                              <Card 
-                                size="small"
-                                title={
-                                  <Space>
-                                    <RiseOutlined style={{ color: '#1abc9c' }} />
-                                    <Text strong>Weekly Performance Trend (Last 8 Weeks)</Text>
-                                  </Space>
-                                }
-                                style={{ borderRadius: '8px' }}
-                              >
-                                <ResponsiveContainer width="100%" height={250}>
-                                  <ComposedChart data={weeklyTrendData}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="week" />
-                                    <YAxis />
-                                    <RechartsTooltip 
-                                      formatter={(value) => {
-                                        if (typeof value === 'number') {
-                                          return CalculationUtils.formatCurrency(value);
-                                        }
-                                        return value;
-                                      }}
-                                      labelFormatter={(label) => `Week: ${label}`}
-                                    />
-                                    <Legend />
-                                    <Area 
-                                      type="monotone" 
-                                      dataKey="revenue" 
-                                      stroke="#3498db" 
-                                      fill="#3498db" 
-                                      fillOpacity={0.2}
-                                      name="Revenue"
-                                    />
-                                    <Line 
-                                      type="monotone" 
-                                      dataKey="profit" 
-                                      stroke="#2ecc71" 
-                                      name="Profit"
-                                      strokeWidth={2}
-                                    />
-                                    <Bar 
-                                      dataKey="transactions" 
-                                      fill="#f39c12" 
-                                      name="Transactions" 
-                                      yAxisId="right"
-                                    />
-                                  </ComposedChart>
-                                </ResponsiveContainer>
-                              </Card>
-                            </Col>
-                          </Row>
-                        )}
-
-                        {/* Credit Alert - Show if there are overdue credits */}
-                        {dashboardData.creditAlerts.length > 0 && (
-                          <Row style={{ marginTop: 24 }}>
-                            <Col span={24}>
-                              <Alert
-                                message={`⚠️ ${dashboardData.creditAlerts.length} credits are overdue`}
-                                description={
-                                  <div>
-                                    <Text>Please follow up with customers for payment collection.</Text>
-                                    <List
-                                      size="small"
-                                      dataSource={dashboardData.creditAlerts.slice(0, 5)}
-                                      renderItem={(credit) => (
-                                        <List.Item>
-                                          <Text>
-                                            <strong>{credit.customerName}</strong> - 
-                                            Balance: {CalculationUtils.formatCurrency(credit.balanceDue)} - 
-                                            Due: {credit.dueDate ? new Date(credit.dueDate).toLocaleDateString() : 'N/A'}
-                                          </Text>
-                                        </List.Item>
-                                      )}
-                                    />
-                                  </div>
-                                }
-                                type="error"
-                                showIcon
-                                icon={<CreditCardOutlined />}
-                                action={
-                                  <Button size="small" type="primary" onClick={() => handleViewAll('credits')}>
-                                    View All Credits
-                                  </Button>
-                                }
-                                style={{ borderRadius: '8px' }}
-                              />
-                            </Col>
-                          </Row>
-                        )}
                       </Card>
                     </Col>
                   </Row>
