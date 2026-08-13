@@ -5,7 +5,7 @@ import { CalculationUtils } from '../utils/calculationUtils';
 
 // Enhanced Configuration
 const API_CONFIG = {
-  baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001/api',
+  baseURL: process.env.REACT_APP_API_BASE_URL || 'https://back-pos.vercel.app/api',
   timeout: 15000, // Reduced from 30000 to 15000ms
   retryAttempts: 2,
   retryDelay: 1000,

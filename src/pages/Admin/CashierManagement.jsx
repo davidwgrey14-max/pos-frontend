@@ -524,7 +524,7 @@ const CashierManagement = () => {
   // Configure axios with correct base URL
   const createApiInstance = () => {
     const instance = axios.create({
-      baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5001',
+      baseURL: process.env.REACT_APP_API_URL || 'https://back-pos.vercel.app',
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json'

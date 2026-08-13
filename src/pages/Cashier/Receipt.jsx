@@ -81,7 +81,7 @@
 //         </Text>
 //         <br />
 //         <Text style={{ fontSize: '12px' }}>
-//           {companyInfo?.email || 'stanzokinyua5967@gmail.com'}
+//           {companyInfo?.email || 'ichigoeliud021@gmail.com'}
 //         </Text>
 //         {companyInfo?.slogan && (
 //           <>
