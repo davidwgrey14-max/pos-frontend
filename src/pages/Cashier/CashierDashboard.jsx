@@ -362,7 +362,7 @@ const CashierDashboard = () => {
         if (transaction.paymentMethod === 'credit') {
           return {
             ...transaction,
-            // The amount shown should be the recognized revenue (amount paid upfront)
+            // The amount   shown should be the recognized revenue (amount paid upfront)
             displayAmount: transaction.recognizedRevenue || transaction.amountPaid || 0,
             // The credit balance should be the outstanding balance only
             creditBalance: transaction.outstandingRevenue || transaction.balanceDue || 0
