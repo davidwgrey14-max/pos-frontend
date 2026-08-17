@@ -1183,6 +1183,108 @@ export const transactionAPI = {
     }
   }
 };
+// ==================== ADMIN API ====================
+
+export const adminAPI = {
+  // Admin-specific endpoints
+  getVerificationRequests: authAPI.getVerificationRequests,
+  verifyDevice: authAPI.verifyDevice,
+  
+  getDashboardStats: async (params = {}) => {
+    try {
+      const response = await api.get('/admin/dashboard/stats', { params });
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error fetching admin dashboard stats:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+  
+  getUsers: async (params = {}) => {
+    try {
+      const response = await api.get('/admin/users', { params });
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error fetching users:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+  
+  getUserById: async (userId) => {
+    try {
+      const response = await api.get(`/admin/users/${userId}`);
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error fetching user:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+  
+  updateUser: async (userId, data) => {
+    try {
+      const response = await api.put(`/admin/users/${userId}`, data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error updating user:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+  
+  deleteUser: async (userId) => {
+    try {
+      const response = await api.delete(`/admin/users/${userId}`);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error deleting user:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+  
+  getSystemSettings: async () => {
+    try {
+      const response = await api.get('/admin/settings');
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error fetching system settings:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+  
+  updateSystemSettings: async (settings) => {
+    try {
+      const response = await api.put('/admin/settings', settings);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error updating system settings:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+  
+  getActivityLogs: async (params = {}) => {
+    try {
+      const response = await api.get('/admin/activity-logs', { params });
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error fetching activity logs:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+  
+  getSystemHealth: async () => {
+    try {
+      const response = await api.get('/admin/health');
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error fetching system health:', error);
+      throw new Error(handleApiError(error));
+    }
+  }
+};
+
+// ==================== EXPORT MAIN API SERVICE ====================
 
 // ==================== EXPORT MAIN API SERVICE ====================
 
@@ -1195,6 +1297,7 @@ const apiService = {
   expense: expenseAPI,
   transaction: transactionAPI,
   credit: creditAPI,
+  admin: adminAPI,  // <-- ADD THIS
   cache,
   clearCache: () => cache.clearAll(),
   handleApiError
