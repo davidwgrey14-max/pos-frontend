@@ -1187,6 +1187,8 @@ export const transactionAPI = {
 
 // ==================== EXPORT MAIN API SERVICE ====================
 
+// ==================== EXPORT MAIN API SERVICE ====================
+
 const apiService = {
   auth: authAPI,
   unified: unifiedAPI,
@@ -1203,9 +1205,9 @@ const apiService = {
 
 export default apiService;
 
-// Export individual APIs for direct import (authAPI and unifiedAPI already exported at top)
+// Export individual APIs for direct import 
+// (authAPI, unifiedAPI, and shopAPI are already exported at top)
 export { 
-  shopAPI, 
   productAPI, 
   cashierAPI, 
   expenseAPI, 
