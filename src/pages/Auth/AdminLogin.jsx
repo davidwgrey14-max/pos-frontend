@@ -1,8 +1,9 @@
-// pages/Auth/AdminLogin.jsx - UPDATED WITH EMAIL-BASED SECURE CODE AUTH
-import { useState } from 'react';
+// src/pages/Auth/AdminLogin.jsx - Enhanced with device verification
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import apiService, { authAPI } from '../../services/api';
-import { 
+import { useSecurity } from '../../contexts/SecurityContext';
+import { authAPI } from '../../services/api';
+import {
   Container,
   Box,
   Avatar,
@@ -15,28 +16,39 @@ import {
   CircularProgress,
   Button,
   TextField,
-  alpha
+  alpha,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  LinearProgress
 } from '@mui/material';
-import { 
-  AdminPanelSettings, 
-  Email, 
+import {
+  AdminPanelSettings,
+  Email,
   Security,
-  ArrowBack 
+  ArrowBack,
+  Verified,
+  Devices,
+  Warning
 } from '@mui/icons-material';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { login } = useSecurity();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
-  const [step, setStep] = useState('email'); // 'email', 'code', 'success'
+  const [step, setStep] = useState('email');
+  const [showDeviceDialog, setShowDeviceDialog] = useState(false);
+  const [deviceInfo, setDeviceInfo] = useState(null);
+  const [verificationStatus, setVerificationStatus] = useState('checking');
   const [formData, setFormData] = useState({
     email: '',
     secureCode: ''
   });
 
-  // Color scheme aligned with Home.jsx
   const colors = {
     primary: {
       main: '#6366F1',
@@ -57,30 +69,112 @@ const AdminLogin = () => {
     }
   };
 
-  // Simple storage function
-  const storeUserData = (user) => {
-    console.log('💾 Storing user data:', user);
-    
-    if (!user) {
-      throw new Error('No user data provided for storage');
-    }
-    
-    // Store user data
-    localStorage.setItem('userData', JSON.stringify(user));
-    localStorage.setItem('adminData', JSON.stringify(user));
-    
-    // Verify storage
-    const storedData = localStorage.getItem('userData');
-    
-    if (!storedData) {
-      throw new Error('Failed to store user data');
-    }
-    
-    console.log('✅ User data storage successful');
-    return true;
+  // Check device on mount
+  useEffect(() => {
+    const checkDevice = async () => {
+      const storedEmail = localStorage.getItem('loginEmail');
+      if (storedEmail) {
+        setFormData(prev => ({ ...prev, email: storedEmail }));
+        const deviceInfo = getDeviceInfo();
+        try {
+          const result = await authAPI.checkDevice({ 
+            email: storedEmail, 
+            deviceInfo 
+          });
+          if (result.requiresVerification) {
+            setDeviceInfo(result.deviceInfo);
+            setShowDeviceDialog(true);
+            setVerificationStatus('pending');
+          }
+        } catch (error) {
+          console.error('Device check error:', error);
+        }
+      }
+    };
+    checkDevice();
+  }, []);
+
+  const getDeviceInfo = () => {
+    const userAgent = navigator.userAgent;
+    return {
+      deviceId: localStorage.getItem('deviceId') || generateDeviceId(),
+      deviceName: getDeviceName(userAgent),
+      deviceType: getDeviceType(userAgent),
+      os: getOS(userAgent),
+      osVersion: getOSVersion(userAgent),
+      browser: getBrowser(userAgent),
+      browserVersion: getBrowserVersion(userAgent),
+      macAddress: generateMacAddress(),
+      userAgent: userAgent,
+      ipAddress: 'detected'
+    };
   };
 
-  // Request secure code
+  const generateDeviceId = () => {
+    const id = 'dev_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem('deviceId', id);
+    return id;
+  };
+
+  const getDeviceName = (ua) => {
+    if (ua.includes('Windows')) return 'Windows PC';
+    if (ua.includes('Mac')) return 'Mac';
+    if (ua.includes('iPhone')) return 'iPhone';
+    if (ua.includes('iPad')) return 'iPad';
+    if (ua.includes('Android')) return 'Android Device';
+    return 'Unknown Device';
+  };
+
+  const getDeviceType = (ua) => {
+    if (ua.includes('Mobile')) return 'mobile';
+    if (ua.includes('Tablet')) return 'tablet';
+    return 'desktop';
+  };
+
+  const getOS = (ua) => {
+    if (ua.includes('Windows NT 10.0')) return 'Windows 10';
+    if (ua.includes('Windows NT 6.1')) return 'Windows 7';
+    if (ua.includes('Mac OS X')) return 'macOS';
+    if (ua.includes('iPhone')) return 'iOS';
+    if (ua.includes('Android')) return 'Android';
+    return 'Unknown';
+  };
+
+  const getOSVersion = (ua) => {
+    const match = ua.match(/Windows NT (\d+\.\d+)/) || 
+                  ua.match(/Mac OS X (\d+[._]\d+)/) ||
+                  ua.match(/Android (\d+[._]\d+)/);
+    return match ? match[1] : 'Unknown';
+  };
+
+  const getBrowser = (ua) => {
+    if (ua.includes('Chrome') && !ua.includes('Edg')) return 'Chrome';
+    if (ua.includes('Firefox')) return 'Firefox';
+    if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
+    if (ua.includes('Edg')) return 'Edge';
+    return 'Unknown';
+  };
+
+  const getBrowserVersion = (ua) => {
+    const match = ua.match(/Chrome\/(\d+)/) ||
+                  ua.match(/Firefox\/(\d+)/) ||
+                  ua.match(/Version\/(\d+)/);
+    return match ? match[1] : 'Unknown';
+  };
+
+  const generateMacAddress = () => {
+    const chars = '0123456789ABCDEF';
+    let mac = '';
+    for (let i = 0; i < 6; i++) {
+      let octet = '';
+      for (let j = 0; j < 2; j++) {
+        octet += chars[Math.floor(Math.random() * 16)];
+      }
+      mac += (i > 0 ? ':' : '') + octet;
+    }
+    return mac;
+  };
+
   const handleRequestCode = async (e) => {
     e.preventDefault();
     
@@ -94,56 +188,39 @@ const AdminLogin = () => {
     setMessage('');
     
     try {
-      console.log('📧 Requesting secure code for:', formData.email);
+      // Store email for device check
+      localStorage.setItem('loginEmail', formData.email);
       
       const response = await authAPI.requestSecureCode({
         email: formData.email
       });
 
-      console.log('✅ Secure code response:', response);
-      
       if (response.success) {
         setMessage(`Secure code sent to ${formData.email}`);
         setStep('code');
+        
+        // Check device status after sending code
+        const deviceInfo = getDeviceInfo();
+        const deviceCheck = await authAPI.checkDevice({ 
+          email: formData.email, 
+          deviceInfo 
+        });
+        
+        if (deviceCheck.requiresVerification) {
+          setDeviceInfo(deviceCheck.deviceInfo);
+          setShowDeviceDialog(true);
+          setVerificationStatus('pending');
+        }
       } else {
         setError(response.message || 'Failed to send secure code');
       }
-      
     } catch (err) {
-      console.error('❌ Secure code request error:', err);
-      
-      if (err.response) {
-        const status = err.response.status;
-        const errorData = err.response.data || {};
-        const message = errorData.message || err.message;
-        
-        switch (status) {
-          case 404:
-            setError('No account found with this email address.');
-            break;
-          case 429:
-            setError('Too many attempts. Please try again later.');
-            break;
-          case 400:
-            setError(message || 'Invalid email address.');
-            break;
-          case 500:
-            setError('Email service temporarily unavailable. Please try again later.');
-            break;
-          default:
-            setError(message || `Error: ${status}`);
-        }
-      } else if (err.request) {
-        setError('Server not responding. Please check your connection.');
-      } else {
-        setError(err.message || 'Failed to request secure code.');
-      }
+      setError(err.message || 'Failed to request secure code');
     } finally {
       setLoading(false);
     }
   };
 
-  // Verify secure code and login
   const handleVerifyCode = async (e) => {
     e.preventDefault();
     
@@ -157,111 +234,34 @@ const AdminLogin = () => {
     setMessage('');
     
     try {
-      console.log('🔐 Verifying secure code for:', formData.email);
-      
       const response = await authAPI.verifySecureCode({
         email: formData.email,
         code: formData.secureCode
       });
 
-      console.log('✅ Verification response:', response);
-      
       if (response.success) {
         setMessage('Login successful! Redirecting...');
         
-        // Extract user data from response
-        let userData = null;
+        const userData = response.user || {
+          email: formData.email,
+          role: 'admin',
+          name: 'System Administrator'
+        };
+
+        // Store login info
+        login(userData, response.token, response.sessionId);
         
-        if (response.user) {
-          userData = response.user;
-        } else if (response.data && response.data.user) {
-          userData = response.data.user;
-        } else {
-          // Create user data from available info
-          userData = {
-            email: formData.email,
-            role: 'admin',
-            name: 'System Administrator',
-            lastLogin: new Date().toISOString()
-          };
-        }
-
-        console.log('👤 Extracted user data:', userData);
-
-        // Verify admin role
-        if (userData.role !== 'admin') {
-          throw new Error('Access denied. Admin privileges required.');
-        }
-
-        // Store user data
-        try {
-          const storageSuccess = storeUserData(userData);
-          
-          if (!storageSuccess) {
-            throw new Error('Storage validation failed');
-          }
-          
-          console.log('🎉 Admin login process completed successfully');
-          
-          // Store token if available
-          if (response.token) {
-            localStorage.setItem('adminToken', response.token);
-          }
-          
-          // Add a small delay to ensure storage is processed
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Navigate to admin dashboard
-          const redirectPath = location.state?.from || '/admin/dashboard';
-          navigate(redirectPath, { 
+        setTimeout(() => {
+          navigate('/admin/dashboard', { 
             replace: true,
-            state: { 
-              loginSuccess: true,
-              timestamp: Date.now(),
-              adminEmail: userData.email
-            }
+            state: { loginSuccess: true }
           });
-          
-        } catch (storageError) {
-          console.error('❌ Storage error:', storageError);
-          setError('Failed to save login information. Please try again.');
-        }
+        }, 500);
       } else {
         setError(response.message || 'Invalid secure code');
       }
-      
     } catch (err) {
-      console.error('❌ Code verification error:', err);
-      
-      if (err.response) {
-        const status = err.response.status;
-        const errorData = err.response.data || {};
-        const message = errorData.message || err.message;
-        
-        switch (status) {
-          case 400:
-            setError(message || 'Invalid or expired code.');
-            break;
-          case 401:
-            setError('Invalid secure code. Please try again.');
-            break;
-          case 404:
-            setError('No secure code found. Please request a new one.');
-            break;
-          case 429:
-            setError('Too many failed attempts. Please request a new code.');
-            break;
-          case 500:
-            setError('Server error. Please try again later.');
-            break;
-          default:
-            setError(message || `Error: ${status}`);
-        }
-      } else if (err.request) {
-        setError('Server not responding. Please check your connection.');
-      } else {
-        setError(err.message || 'Failed to verify secure code.');
-      }
+      setError(err.message || 'Failed to verify code');
     } finally {
       setLoading(false);
     }
@@ -269,16 +269,12 @@ const AdminLogin = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
-    // For secure code, only allow numbers and limit to 6 digits
     if (name === 'secureCode') {
       const numericValue = value.replace(/\D/g, '').slice(0, 6);
       setFormData(prev => ({ ...prev, [name]: numericValue }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
-    
-    // Clear errors when user starts typing
     if (error) setError('');
   };
 
@@ -289,37 +285,8 @@ const AdminLogin = () => {
     setMessage('');
   };
 
-  const getStepIcon = () => {
-    switch (step) {
-      case 'email':
-        return <Email />;
-      case 'code':
-        return <Security />;
-      default:
-        return <AdminPanelSettings />;
-    }
-  };
-
-  const getStepTitle = () => {
-    switch (step) {
-      case 'email':
-        return 'Admin Portal Access';
-      case 'code':
-        return 'Enter Secure Code';
-      default:
-        return 'Admin Portal';
-    }
-  };
-
-  const getStepSubtitle = () => {
-    switch (step) {
-      case 'email':
-        return 'Enter your email to receive a secure login code';
-      case 'code':
-        return `Check ${formData.email} for your 6-digit code`;
-      default:
-        return 'Secure Administrator Access';
-    }
+  const handleCloseDeviceDialog = () => {
+    setShowDeviceDialog(false);
   };
 
   return (
@@ -338,80 +305,42 @@ const AdminLogin = () => {
     >
       <CssBaseline />
       
-      <Box
-        sx={{
-          width: '100%',
-          maxWidth: '400px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 3
-        }}
-      >
-        {/* Header Section */}
-        <Box sx={{ textAlign: 'center', mb: 2 }}>
+      <Box sx={{ width: '100%', maxWidth: '400px' }}>
+        <Box sx={{ textAlign: 'center', mb: 3 }}>
           <Typography 
-            component="h1" 
             variant="h4" 
             sx={{ 
               fontWeight: 'bold',
-              color: 'white',
-              textShadow: '0 4px 8px rgba(0,0,0,0.3)',
               background: colors.admin.gradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
               mb: 1
             }}
           >
-            {getStepTitle()}
+            Admin Portal
           </Typography>
-          <Typography 
-            variant="h6" 
-            sx={{ 
-              color: alpha('#fff', 0.8),
-              fontWeight: 300
-            }}
-          >
-            {getStepSubtitle()}
+          <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+            {step === 'email' ? 'Enter your email to receive a secure code' : 'Enter the 6-digit code sent to your email'}
           </Typography>
         </Box>
 
         {error && (
-          <Alert 
-            severity="error"
-            sx={{ 
-              width: '100%', 
-              borderRadius: 2,
-              border: `1px solid ${alpha('#ef5350', 0.3)}`
-            }} 
-            onClose={() => setError(null)}
-          >
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
         {message && (
-          <Alert 
-            severity="success"
-            sx={{ 
-              width: '100%', 
-              borderRadius: 2,
-              border: `1px solid ${alpha('#4caf50', 0.3)}`
-            }} 
-            onClose={() => setMessage(null)}
-          >
+          <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setMessage(null)}>
             {message}
           </Alert>
         )}
 
-        {/* Login Form */}
         <Paper 
           elevation={8} 
           sx={{ 
             p: 4, 
             borderRadius: 3,
-            width: '100%',
             background: `linear-gradient(135deg, ${colors.background.paper} 0%, ${alpha(colors.background.paper, 0.8)} 100%)`,
             border: `1px solid ${alpha(colors.admin.main, 0.2)}`,
           }}
@@ -419,27 +348,21 @@ const AdminLogin = () => {
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Avatar 
               sx={{ 
-                width: 80, 
-                height: 80, 
-                m: '0 auto 16px',
+                width: 70, 
+                height: 70, 
+                mx: 'auto',
                 background: colors.admin.gradient
               }}
             >
-              {loading ? (
-                <CircularProgress size={40} color="inherit" />
-              ) : (
-                getStepIcon()
-              )}
+              {loading ? <CircularProgress size={40} color="inherit" /> : <AdminPanelSettings />}
             </Avatar>
           </Box>
 
-          {/* Email Step */}
           {step === 'email' && (
-            <Box component="form" onSubmit={handleRequestCode}>
+            <form onSubmit={handleRequestCode}>
               <TextField
-                margin="normal"
-                required
                 fullWidth
+                required
                 name="email"
                 label="Email Address"
                 type="email"
@@ -452,21 +375,13 @@ const AdminLogin = () => {
                   mb: 3,
                   '& .MuiOutlinedInput-root': {
                     color: 'white',
-                    '& fieldset': {
-                      borderColor: alpha('#fff', 0.3),
-                    },
-                    '&:hover fieldset': {
-                      borderColor: colors.admin.light,
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: colors.admin.main,
-                    },
+                    '& fieldset': { borderColor: alpha('#fff', 0.3) },
+                    '&:hover fieldset': { borderColor: colors.admin.light },
+                    '&.Mui-focused fieldset': { borderColor: colors.admin.main },
                   },
                   '& .MuiInputLabel-root': {
                     color: alpha('#fff', 0.7),
-                  },
-                  '& .MuiInputLabel-root.Mui-focused': {
-                    color: colors.admin.light,
+                    '&.Mui-focused': { color: colors.admin.light },
                   },
                 }}
               />
@@ -495,18 +410,16 @@ const AdminLogin = () => {
                 }}
                 startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <Email />}
               >
-                {loading ? 'SENDING CODE...' : 'SEND SECURE CODE'}
+                {loading ? 'SENDING...' : 'SEND SECURE CODE'}
               </Button>
-            </Box>
+            </form>
           )}
 
-          {/* Code Verification Step */}
           {step === 'code' && (
-            <Box component="form" onSubmit={handleVerifyCode}>
+            <form onSubmit={handleVerifyCode}>
               <TextField
-                margin="normal"
-                required
                 fullWidth
+                required
                 name="secureCode"
                 label="6-Digit Secure Code"
                 type="text"
@@ -524,21 +437,13 @@ const AdminLogin = () => {
                   mb: 2,
                   '& .MuiOutlinedInput-root': {
                     color: 'white',
-                    '& fieldset': {
-                      borderColor: alpha('#fff', 0.3),
-                    },
-                    '&:hover fieldset': {
-                      borderColor: colors.admin.light,
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: colors.admin.main,
-                    },
+                    '& fieldset': { borderColor: alpha('#fff', 0.3) },
+                    '&:hover fieldset': { borderColor: colors.admin.light },
+                    '&.Mui-focused fieldset': { borderColor: colors.admin.main },
                   },
                   '& .MuiInputLabel-root': {
                     color: alpha('#fff', 0.7),
-                  },
-                  '& .MuiInputLabel-root.Mui-focused': {
-                    color: colors.admin.light,
+                    '&.Mui-focused': { color: colors.admin.light },
                   },
                 }}
               />
@@ -602,23 +507,76 @@ const AdminLogin = () => {
                   }}
                   startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <Security />}
                 >
-                  {loading ? 'VERIFYING...' : 'VERIFY CODE'}
+                  {loading ? 'VERIFYING...' : 'VERIFY'}
                 </Button>
               </Box>
-            </Box>
+            </form>
           )}
         </Paper>
 
-        {/* Footer Note */}
-        <Box sx={{ mt: 2, textAlign: 'center' }}>
-          <Typography variant="caption" sx={{ color: alpha('#fff', 0.6) }}>
-            {step === 'email' 
-              ? 'Secure access for authorized administrators only' 
-              : 'Codes expire after 15 minutes for security'
-            }
-          </Typography>
-        </Box>
+        <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 2, color: alpha('#fff', 0.4) }}>
+          Secure access for authorized administrators only
+        </Typography>
       </Box>
+
+      {/* Device Verification Dialog */}
+      <Dialog
+        open={showDeviceDialog}
+        onClose={handleCloseDeviceDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Devices color="warning" />
+          Device Verification Required
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mb: 2 }}>
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              A new device is trying to access your account. Please wait for admin approval.
+            </Alert>
+            
+            {deviceInfo && (
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Typography variant="subtitle2" gutterBottom>Device Details:</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Device:</strong> {deviceInfo.deviceName}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>OS:</strong> {deviceInfo.os} {deviceInfo.osVersion}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Browser:</strong> {deviceInfo.browser} {deviceInfo.browserVersion}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>MAC:</strong> {deviceInfo.macAddress}
+                </Typography>
+              </Paper>
+            )}
+            
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                An email has been sent to administrators. Please wait for approval or try again later.
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeviceDialog} color="primary">
+            Dismiss
+          </Button>
+          <Button 
+            onClick={() => {
+              setShowDeviceDialog(false);
+              setStep('email');
+            }}
+            color="primary"
+            variant="contained"
+          >
+            Try Again
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

@@ -1,13 +1,17 @@
-// src/App.js - UPDATED WITH INACTIVITY MONITOR
+// src/App.js - UPDATED WITH SECURITY FEATURES
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { message } from 'antd';
 
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+// Import Security Context
+import { SecurityProvider, useSecurity } from './contexts/SecurityContext';
 import InactivityMonitor from './components/InactivityMonitor';
+import SessionStatus from './components/SessionStatus';
 
 // Import page components
 import Home from './pages/Home';
 import AdminLogin from './pages/Auth/AdminLogin';
-import CashierLogin from './pages/Auth/CashierLogin';
+import CashierLogin from './pages/Cashier/CashierLogin';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import CashierDashboard from './pages/Cashier/CashierDashboard';
 
@@ -20,7 +24,7 @@ import Inventory from './pages/Admin/Inventory';
 import ExpenseManagement from './pages/Admin/ExpenseManagement';
 import TransactionReports from './pages/Admin/TransactionReports';
 import CreditManagement from './pages/Admin/CreditManagement';
-import DeviceVerification from './pages/Admin/DeviceVerification'; // NEW: Import Device Verification
+import DeviceVerification from './pages/Admin/DeviceVerification';
 
 // Import cashier components
 import ShopSelection from './pages/Cashier/ShopSelection';
@@ -29,20 +33,157 @@ import Receipt from './pages/Cashier/Receipt';
 
 // ==================== PROTECTED ROUTE WRAPPER ====================
 
-const ProtectedRoute = ({ children }) => {
-  // Check if user is authenticated
-  const authData = JSON.parse(localStorage.getItem('cashierData') || '{}');
-  const adminData = JSON.parse(localStorage.getItem('adminData') || '{}');
-  const token = localStorage.getItem('sessionToken') || localStorage.getItem('cashierToken');
-  
-  // If no token or no user data, redirect to login
-  if (!token || (!authData._id && !adminData._id)) {
-    return <Navigate to="/cashier-login" replace />;
+const ProtectedRoute = ({ children, requireAdmin = false }) => {
+  const { isAuthenticated, user, deviceVerified, pendingVerification } = useSecurity();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    // Check authentication status
+    const token = localStorage.getItem('sessionToken') || 
+                  localStorage.getItem('authToken') ||
+                  localStorage.getItem('cashierToken') || 
+                  localStorage.getItem('adminToken');
+    const userData = localStorage.getItem('userData') || 
+                     localStorage.getItem('cashierData') || 
+                     localStorage.getItem('adminData');
+    
+    if (!token || !userData) {
+      setChecking(false);
+      return;
+    }
+    
+    setChecking(false);
+  }, []);
+
+  if (checking) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        minHeight: '100vh',
+        background: '#0F172A',
+        color: 'white'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ 
+            width: 40, 
+            height: 40, 
+            border: '4px solid #6366F1',
+            borderTop: '4px solid transparent',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 16px'
+          }} />
+          <p>Verifying session...</p>
+        </div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
   }
+
+  // Check if authenticated
+  const token = localStorage.getItem('sessionToken') || 
+                localStorage.getItem('authToken') ||
+                localStorage.getItem('cashierToken') || 
+                localStorage.getItem('adminToken');
   
+  if (!token) {
+    return <Navigate to="/cashier-login" state={{ from: location }} replace />;
+  }
+
+  // Check admin requirement
+  if (requireAdmin) {
+    const adminData = localStorage.getItem('adminData') || 
+                     localStorage.getItem('userData');
+    if (adminData) {
+      try {
+        const user = JSON.parse(adminData);
+        if (user.role !== 'admin') {
+          return <Navigate to="/cashier/shops" replace />;
+        }
+      } catch (e) {
+        return <Navigate to="/cashier-login" replace />;
+      }
+    } else {
+      return <Navigate to="/cashier-login" replace />;
+    }
+  }
+
+  // Check device verification
+  const deviceVerified = localStorage.getItem('deviceVerified') === 'true';
+  if (!deviceVerified) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        minHeight: '100vh',
+        background: '#0F172A',
+        padding: '20px'
+      }}>
+        <div style={{ 
+          background: '#1E293B',
+          padding: '40px',
+          borderRadius: '12px',
+          maxWidth: '500px',
+          textAlign: 'center',
+          border: '1px solid rgba(99, 102, 241, 0.2)'
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔐</div>
+          <h2 style={{ color: 'white', marginBottom: 8 }}>Device Verification Required</h2>
+          <p style={{ color: 'rgba(255,255,255,0.7)', marginBottom: 16 }}>
+            Please wait for admin approval to access this device.
+          </p>
+          <div style={{ 
+            background: 'rgba(255,255,255,0.05)', 
+            padding: 16, 
+            borderRadius: 8,
+            textAlign: 'left',
+            fontSize: 14,
+            color: 'rgba(255,255,255,0.6)'
+          }}>
+            <p><strong>Device:</strong> {navigator.userAgent.split(' ').slice(0, 3).join(' ')}</p>
+            <p><strong>Status:</strong> Pending Verification</p>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem('sessionToken');
+              localStorage.removeItem('authToken');
+              localStorage.removeItem('cashierToken');
+              localStorage.removeItem('adminToken');
+              window.location.href = '/cashier-login';
+            }}
+            style={{
+              marginTop: 20,
+              padding: '10px 24px',
+              background: '#EF4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 14
+            }}
+          >
+            Logout & Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Get session timeout from stored data (default 5 minutes)
-  const sessionTimeout = authData.sessionTimeout || adminData.sessionTimeout || 5;
-  
+  const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+  const sessionTimeout = userData.sessionTimeout || 5;
+
   return (
     <InactivityMonitor timeout={sessionTimeout}>
       {children}
@@ -54,66 +195,87 @@ const ProtectedRoute = ({ children }) => {
 
 const App = () => {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<Home />} />
-        <Route path="/admin-login" element={<AdminLogin />} />
-        <Route path="/cashier-login" element={<CashierLogin />} />
-        
-        {/* Additional login route aliases */}
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/cashier/login" element={<CashierLogin />} />
-
-        {/* Standalone Shop Selection Route */}
-        <Route path="/cashier/shops" element={<ShopSelection />} />
-
-        {/* Admin Routes - Protected */}
-        <Route path="/admin/*" element={
-          <ProtectedRoute>
-            <AdminDashboard />
-          </ProtectedRoute>
-        }>
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<AdminDashboardHome />} />
-          <Route path="cashiers" element={<CashierManagement />} />
-          <Route path="shops" element={<ShopManagement />} />
-          <Route path="products" element={<ProductManagement />} />
-          <Route path="inventory" element={<Inventory />} />
-          <Route path="expenses" element={<ExpenseManagement />} />
-          <Route path="transactions" element={<TransactionReports />} />
-          <Route path="credits" element={<CreditManagement />} />
-          <Route path="verify-device" element={<DeviceVerification />} /> {/* NEW: Device Verification Route */}
+    <SecurityProvider>
+      <BrowserRouter>
+        <SessionExpiryListener />
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<Home />} />
+          <Route path="/admin-login" element={<AdminLogin />} />
+          <Route path="/cashier-login" element={<CashierLogin />} />
           
-          {/* Catch-all route for admin section */}
-          <Route path="*" element={<Navigate to="dashboard" replace />} />
-        </Route>
+          {/* Additional login route aliases */}
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/cashier/login" element={<CashierLogin />} />
 
-        {/* Cashier Routes - Protected */}
-        <Route path="/cashier/dashboard/*" element={
-          <ProtectedRoute>
-            <CashierDashboard />
-          </ProtectedRoute>
-        }>
-          <Route index element={<Navigate to="cart" replace />} />
-          <Route path="cart" element={<Cart />} />
-          <Route path="receipt" element={<Receipt />} />
+          {/* Standalone Shop Selection Route */}
+          <Route path="/cashier/shops" element={<ShopSelection />} />
+
+          {/* Admin Routes - Protected */}
+          <Route path="/admin/*" element={
+            <ProtectedRoute requireAdmin>
+              <AdminDashboard />
+            </ProtectedRoute>
+          }>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<AdminDashboardHome />} />
+            <Route path="cashiers" element={<CashierManagement />} />
+            <Route path="shops" element={<ShopManagement />} />
+            <Route path="products" element={<ProductManagement />} />
+            <Route path="inventory" element={<Inventory />} />
+            <Route path="expenses" element={<ExpenseManagement />} />
+            <Route path="transactions" element={<TransactionReports />} />
+            <Route path="credits" element={<CreditManagement />} />
+            <Route path="verify-device" element={<DeviceVerification />} />
+            
+            {/* Catch-all route for admin section */}
+            <Route path="*" element={<Navigate to="dashboard" replace />} />
+          </Route>
+
+          {/* Cashier Routes - Protected */}
+          <Route path="/cashier/dashboard/*" element={
+            <ProtectedRoute>
+              <CashierDashboard />
+            </ProtectedRoute>
+          }>
+            <Route index element={<Navigate to="cart" replace />} />
+            <Route path="cart" element={<Cart />} />
+            <Route path="receipt" element={<Receipt />} />
+            
+            {/* Catch-all route for cashier dashboard section */}
+            <Route path="*" element={<Navigate to="cart" replace />} />
+          </Route>
+
+          {/* Smart redirect based on authentication status */}
+          <Route path="/redirect" element={<SmartRedirect />} />
           
-          {/* Catch-all route for cashier dashboard section */}
-          <Route path="*" element={<Navigate to="cart" replace />} />
-        </Route>
-
-        {/* Smart redirect based on authentication status */}
-        <Route path="/redirect" element={<SmartRedirect />} />
-        
-        {/* Auto-redirect root based on auth status */}
-        <Route path="/" element={<RootRedirect />} />
-        
-        {/* Fallback Route */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+          {/* Auto-redirect root based on auth status */}
+          <Route path="/" element={<RootRedirect />} />
+          
+          {/* Fallback Route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </SecurityProvider>
   );
+};
+
+// ==================== SESSION EXPIRY LISTENER ====================
+
+const SessionExpiryListener = () => {
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      message.error('Your session has expired. Please login again.');
+      setTimeout(() => {
+        window.location.href = '/cashier-login?expired=true';
+      }, 500);
+    };
+    
+    window.addEventListener('sessionExpired', handleSessionExpired);
+    return () => window.removeEventListener('sessionExpired', handleSessionExpired);
+  }, []);
+  
+  return null;
 };
 
 // ==================== SMART REDIRECT ====================
@@ -121,7 +283,9 @@ const App = () => {
 const SmartRedirect = () => {
   const cashierData = localStorage.getItem('cashierData');
   const adminData = localStorage.getItem('adminData');
-  const token = localStorage.getItem('sessionToken') || localStorage.getItem('cashierToken');
+  const token = localStorage.getItem('sessionToken') || 
+                localStorage.getItem('authToken') ||
+                localStorage.getItem('cashierToken');
   
   if (!token) {
     return <Navigate to="/" replace />;
@@ -155,7 +319,9 @@ const RootRedirect = () => {
     try {
       const cashierData = localStorage.getItem('cashierData');
       const adminData = localStorage.getItem('adminData');
-      const token = localStorage.getItem('sessionToken') || localStorage.getItem('cashierToken');
+      const token = localStorage.getItem('sessionToken') || 
+                    localStorage.getItem('authToken') ||
+                    localStorage.getItem('cashierToken');
       
       if (!token) return null;
       

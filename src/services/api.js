@@ -1,7 +1,5 @@
-// src/services/api.js - CORRECTED WITH DEVICE VERIFICATION
-
+// src/services/api.js - UPDATED WITH SECURITY FEATURES
 import axios from 'axios';
-import { CalculationUtils } from '../utils/calculationUtils';
 
 // Enhanced Configuration
 const API_CONFIG = {
@@ -128,10 +126,10 @@ const createApiInstance = (baseURL = API_CONFIG.baseURL, customTimeout = null) =
 
   instance.interceptors.request.use(
     (config) => {
-      const token = localStorage.getItem('adminToken') || 
-                    localStorage.getItem('userToken') || 
-                    localStorage.getItem('cashierToken') ||
-                    localStorage.getItem('sessionToken');
+      const token = localStorage.getItem('sessionToken') || 
+                    localStorage.getItem('authToken') ||
+                    localStorage.getItem('cashierToken') || 
+                    localStorage.getItem('adminToken');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -174,18 +172,22 @@ const createApiInstance = (baseURL = API_CONFIG.baseURL, customTimeout = null) =
         }
       }
       
+      // Handle session expiry
       if (error.response?.status === 401) {
-        // Don't redirect for device verification endpoints
-        if (!originalRequest.url?.includes('/auth/check-device')) {
-          localStorage.removeItem('adminToken');
-          localStorage.removeItem('userToken');
-          localStorage.removeItem('cashierToken');
+        const message = error.response?.data?.message || '';
+        if (message.includes('SESSION_EXPIRED') || message.includes('session expired')) {
+          localStorage.removeItem('authToken');
           localStorage.removeItem('sessionToken');
+          localStorage.removeItem('cashierToken');
+          localStorage.removeItem('adminToken');
           localStorage.removeItem('userData');
-          localStorage.removeItem('adminData');
           localStorage.removeItem('cashierData');
+          localStorage.removeItem('adminData');
+          localStorage.removeItem('deviceVerified');
+          
+          // Dispatch session expired event
           if (typeof window !== 'undefined') {
-            window.location.href = '/cashier-login';
+            window.dispatchEvent(new CustomEvent('sessionExpired'));
           }
         }
       }
@@ -272,9 +274,11 @@ export const authAPI = {
         localStorage.setItem('userToken', token);
         localStorage.setItem('userData', JSON.stringify(user));
         localStorage.setItem('sessionToken', token);
+        localStorage.setItem('authToken', token);
         
         if (data.device) {
           localStorage.setItem('deviceId', data.device.deviceId || data.device.id);
+          localStorage.setItem('deviceVerified', 'true');
         }
         
         cache.clearAll();
@@ -367,6 +371,7 @@ export const authAPI = {
         localStorage.setItem('token', data.token);
         localStorage.setItem('userToken', data.token);
         localStorage.setItem('sessionToken', data.token);
+        localStorage.setItem('authToken', data.token);
         
         api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
         quickApi.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
@@ -388,6 +393,7 @@ export const authAPI = {
       
       if (data.device) {
         localStorage.setItem('deviceId', data.device.deviceId || data.device.id);
+        localStorage.setItem('deviceVerified', 'true');
       }
       
       cache.clearAll();
@@ -425,7 +431,6 @@ export const authAPI = {
     try {
       console.log('📱 Checking device for:', data.email);
       
-      // Make sure deviceInfo is included
       if (!data.deviceInfo) {
         throw new Error('Device information is required');
       }
@@ -436,7 +441,6 @@ export const authAPI = {
     } catch (error) {
       console.error('❌ Device check error:', error);
       
-      // If the response has requiresVerification, return it
       if (error.response?.data?.requiresVerification) {
         return error.response.data;
       }
@@ -450,6 +454,7 @@ export const authAPI = {
   refreshSession: async () => {
     try {
       const token = localStorage.getItem('sessionToken') || 
+                    localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
                     localStorage.getItem('adminToken');
       if (!token) throw new Error('No session token');
@@ -467,6 +472,7 @@ export const authAPI = {
   logout: async (token) => {
     try {
       const authToken = token || localStorage.getItem('sessionToken') || 
+                        localStorage.getItem('authToken') ||
                         localStorage.getItem('cashierToken') || 
                         localStorage.getItem('adminToken');
       if (authToken) {
@@ -480,7 +486,9 @@ export const authAPI = {
       localStorage.removeItem('cashierData');
       localStorage.removeItem('cashierToken');
       localStorage.removeItem('sessionToken');
+      localStorage.removeItem('authToken');
       localStorage.removeItem('deviceId');
+      localStorage.removeItem('deviceVerified');
       localStorage.removeItem('userData');
       localStorage.removeItem('userToken');
       localStorage.removeItem('adminData');
@@ -495,6 +503,7 @@ export const authAPI = {
   getDevices: async () => {
     try {
       const token = localStorage.getItem('sessionToken') || 
+                    localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
                     localStorage.getItem('adminToken');
       if (!token) throw new Error('No session token');
@@ -512,6 +521,7 @@ export const authAPI = {
   revokeDevice: async (deviceId) => {
     try {
       const token = localStorage.getItem('sessionToken') || 
+                    localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
                     localStorage.getItem('adminToken');
       if (!token) throw new Error('No session token');
@@ -529,6 +539,7 @@ export const authAPI = {
   getSessions: async () => {
     try {
       const token = localStorage.getItem('sessionToken') || 
+                    localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
                     localStorage.getItem('adminToken');
       if (!token) throw new Error('No session token');
@@ -548,6 +559,7 @@ export const authAPI = {
   getVerificationRequests: async () => {
     try {
       const token = localStorage.getItem('sessionToken') || 
+                    localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
                     localStorage.getItem('adminToken');
       if (!token) throw new Error('No session token');
@@ -565,6 +577,7 @@ export const authAPI = {
   verifyDevice: async (data) => {
     try {
       const token = localStorage.getItem('sessionToken') || 
+                    localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
                     localStorage.getItem('adminToken');
       if (!token) throw new Error('No session token');
@@ -584,7 +597,8 @@ export const authAPI = {
   isCashierLoggedIn: () => {
     const token = localStorage.getItem('cashierToken') || 
                   localStorage.getItem('userToken') || 
-                  localStorage.getItem('sessionToken');
+                  localStorage.getItem('sessionToken') ||
+                  localStorage.getItem('authToken');
     const cashierData = localStorage.getItem('cashierData') || 
                        localStorage.getItem('userData');
     
@@ -602,7 +616,8 @@ export const authAPI = {
   isAdminLoggedIn: () => {
     const token = localStorage.getItem('adminToken') || 
                   localStorage.getItem('userToken') || 
-                  localStorage.getItem('sessionToken');
+                  localStorage.getItem('sessionToken') ||
+                  localStorage.getItem('authToken');
     const adminData = localStorage.getItem('adminData') || 
                      localStorage.getItem('userData');
     
@@ -663,232 +678,7 @@ export const authAPI = {
   }
 };
 
-// ==================== OPTIMIZED TRANSACTION API SERVICE ====================
-
-export const transactionAPI = {
-  create: async (transactionData) => {
-    try {
-      console.log('💰 Creating transaction...');
-      
-      if (transactionData.isCreditPayment) {
-        console.log('💳 Processing credit payment transaction');
-        transactionData.transactionType = 'credit_payment';
-        transactionData.paymentStatus = 'completed';
-        
-        if (transactionData.items && transactionData.items.length > 0) {
-          transactionData.items = transactionData.items.map(item => ({
-            ...item,
-            productId: item.productId || null,
-            productName: item.productName || `Credit Payment`,
-            quantity: item.quantity || 1,
-            price: item.price || transactionData.totalAmount,
-            totalPrice: item.totalPrice || transactionData.totalAmount,
-            buyingPrice: item.buyingPrice || 0
-          }));
-        }
-      }
-
-      const response = await quickApi.post('/transactions', transactionData);
-      cache.clearAll();
-      
-      console.log('✅ Transaction created successfully');
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error creating transaction:', error);
-      
-      let errorMessage = 'Transaction failed. ';
-      
-      if (error.code === 'ECONNABORTED') {
-        errorMessage += 'Request timed out. Please check your connection and try again.';
-      } else if (error.response?.status === 500) {
-        errorMessage += 'Server error. Please try again.';
-      } else {
-        errorMessage += handleApiError(error);
-      }
-      
-      throw new Error(errorMessage);
-    }
-  },
-
-  getAll: async (params = {}) => {
-    try {
-      const cacheKey = `transactions_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) return cached;
-
-      const response = await api.get('/transactions', { params });
-      const data = response.data?.data || response.data;
-      
-      cache.set(cacheKey, data);
-      return data;
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  getById: async (id) => {
-    try {
-      const transactionId = typeof id === 'object' ? id._id || id.id || id.transactionId : id;
-      
-      if (!transactionId) {
-        throw new Error('Invalid transaction ID');
-      }
-      
-      const response = await api.get(`/transactions/${transactionId}`);
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('Error fetching transaction:', error);
-      return null;
-    }
-  },
-
-  update: async (id, data) => {
-    try {
-      const response = await api.put(`/transactions/${id}`, data);
-      cache.clearAll();
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('Error updating transaction:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  delete: async (id) => {
-    try {
-      const response = await api.delete(`/transactions/${id}`);
-      cache.clearAll();
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('Error deleting transaction:', error);
-      throw new Error(handleApiError(error));
-    }
-  }
-};
-
-// ==================== OPTIMIZED CREDIT API SERVICE ====================
-
-export const creditAPI = {
-  create: async (creditData) => {
-    try {
-      console.log('💳 Creating credit record...');
-      
-      if (!creditData.transactionId) {
-        throw new Error('Transaction ID is required for credit record');
-      }
-      
-      if (!creditData.customerName) {
-        throw new Error('Customer name is required for credit record');
-      }
-      
-      const response = await quickApi.post('/credits', creditData);
-      cache.clearAll();
-      console.log('✅ Credit record created successfully');
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error creating credit record:', error);
-      
-      let errorMessage = handleApiError(error);
-      
-      if (error.message.includes('Transaction ID')) {
-        errorMessage = error.message;
-      } else if (error.response?.status === 404) {
-        errorMessage = 'Credit creation endpoint not found. Please check if the backend server is running.';
-      } else if (error.response?.status === 400) {
-        errorMessage = error.response.data?.message || 'Invalid credit data provided';
-      }
-      
-      throw new Error(errorMessage);
-    }
-  },
-
-  getAll: async (params = {}) => {
-    try {
-      console.log('📋 Fetching credits...');
-      
-      const cacheKey = `credits_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        console.log('✅ Using cached credits data');
-        return cached;
-      }
-
-      const optimizedParams = {
-        includeTransactions: 'false',
-        status: params.status !== 'all' ? params.status : undefined,
-        shopId: params.shopId !== 'all' ? params.shopId : undefined,
-        limit: params.limit || 100,
-        sort: '-createdAt',
-        simple: 'true'
-      };
-
-      const response = await quickApi.get('/credits', { params: optimizedParams });
-      
-      console.log('✅ Credits fetched successfully');
-      
-      cache.set(cacheKey, response.data);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error fetching credits:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  getById: async (id) => {
-    try {
-      const response = await api.get(`/credits/${id}`);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error fetching credit:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  update: async (id, updateData) => {
-    try {
-      const response = await api.put(`/credits/${id}`, updateData);
-      cache.clearAll();
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error updating credit:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  delete: async (id) => {
-    try {
-      const response = await api.delete(`/credits/${id}`);
-      cache.clearAll();
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error deleting credit:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  patchPayment: async (id, paymentData) => {
-    try {
-      const response = await quickApi.patch(`/credits/${id}/payment`, paymentData);
-      cache.clearAll();
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error recording payment:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  getPaymentHistory: async (creditId) => {
-    try {
-      const response = await quickApi.get(`/credits/${creditId}/payment-history`);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error fetching payment history:', error);
-      throw new Error(handleApiError(error));
-    }
-  }
-};
-
-// ==================== ENHANCED UNIFIED API SERVICE ====================
+// ==================== UNIFIED API SERVICE ====================
 
 export const unifiedAPI = {
   getCombinedTransactions: async (params = {}) => {
@@ -927,11 +717,11 @@ export const unifiedAPI = {
         products: products,
         shops: shops,
         cashiers: cashiers,
-        summary: data.summary || CalculationUtils.getDefaultStats(),
-        financialStats: data.financialStats || data.summary || CalculationUtils.getDefaultStats(),
+        summary: data.summary || getDefaultStats(),
+        financialStats: data.financialStats || data.summary || getDefaultStats(),
         enhancedStats: data.enhancedStats || {
           salesWithProfit: transactions,
-          financialStats: data.summary || data.financialStats || CalculationUtils.getDefaultStats()
+          financialStats: data.summary || data.financialStats || getDefaultStats()
         }
       };
 
@@ -950,659 +740,64 @@ export const unifiedAPI = {
         products: [],
         expenses: [],
         credits: [],
-        summary: CalculationUtils.getDefaultStats(),
-        financialStats: CalculationUtils.getDefaultStats(),
+        summary: getDefaultStats(),
+        financialStats: getDefaultStats(),
         enhancedStats: {
           salesWithProfit: [],
-          financialStats: CalculationUtils.getDefaultStats()
+          financialStats: getDefaultStats()
         },
         error: handleApiError(error)
       };
       
       return fallbackData;
     }
-  },
-
-  createTransaction: async (transactionData) => {
-    try {
-      console.log('💰 Creating transaction...');
-      
-      if (transactionData.paymentMethod === 'credit') {
-        transactionData.amountPaidNow = transactionData.amountPaid;
-      }
-
-      const response = await quickApi.post('/transactions', transactionData);
-      cache.clearAll();
-      
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error creating transaction:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  getCombinedReports: async (params = {}) => {
-    try {
-      console.log('📊 Generating combined reports...');
-      
-      const cacheKey = `combined_reports_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-      
-      const transactionsData = await unifiedAPI.getCombinedTransactions(params);
-      
-      const enhancedReports = {
-        ...transactionsData,
-        salesSummary: transactionsData.salesSummary || {
-          financialStats: transactionsData.financialStats,
-          topProducts: transactionsData.performance?.topProducts || [],
-          topCashiers: transactionsData.performance?.topCashiers || []
-        },
-        comprehensiveReport: transactionsData.comprehensiveReport || {
-          summary: transactionsData.financialStats,
-          transactions: transactionsData.transactions,
-          expenses: transactionsData.expenses,
-          products: transactionsData.products,
-          credits: transactionsData.credits
-        }
-      };
-      
-      cache.set(cacheKey, enhancedReports);
-      return enhancedReports;
-    } catch (error) {
-      console.error('❌ Error generating combined reports:', error);
-      
-      const cacheKey = `combined_reports_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-      
-      return {
-        salesSummary: {
-          financialStats: CalculationUtils.getDefaultStats(),
-          topProducts: [],
-          topCashiers: []
-        },
-        comprehensiveReport: {
-          summary: CalculationUtils.getDefaultStats(),
-          transactions: [],
-          expenses: [],
-          products: [],
-          credits: []
-        },
-        error: handleApiError(error)
-      };
-    }
-  },
-
-  getCombinedCreditAnalysis: async (params = {}) => {
-    try {
-      console.log('💳 Fetching combined credit analysis...');
-      
-      const cacheKey = `credit_analysis_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-      
-      const transactionsData = await unifiedAPI.getCombinedTransactions(params);
-      
-      const creditTransactions = transactionsData.transactions?.filter(t => t.isCreditTransaction) || [];
-      const credits = transactionsData.credits || [];
-      
-      const totalCreditSales = transactionsData.financialStats?.creditSales || 
-                              creditTransactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0);
-      
-      const recognizedCreditRevenue = transactionsData.financialStats?.recognizedCreditRevenue ||
-                                    creditTransactions.reduce((sum, t) => sum + (t.recognizedRevenue || 0), 0);
-      
-      const outstandingCredit = transactionsData.financialStats?.outstandingCredit ||
-                              creditTransactions.reduce((sum, t) => sum + (t.outstandingRevenue || 0), 0);
-      
-      const enhancedAnalysis = {
-        totalCreditSales: parseFloat(totalCreditSales.toFixed(2)),
-        outstandingCredit: parseFloat(outstandingCredit.toFixed(2)),
-        recognizedCreditRevenue: parseFloat(recognizedCreditRevenue.toFixed(2)),
-        creditSalesCount: Math.max(creditTransactions.length, credits.length),
-        creditCollectionRate: totalCreditSales > 0 ? 
-          parseFloat(((totalCreditSales - outstandingCredit) / totalCreditSales) * 100).toFixed(2) : 0
-      };
-      
-      cache.set(cacheKey, enhancedAnalysis);
-      return enhancedAnalysis;
-    } catch (error) {
-      console.error('❌ Error in credit analysis calculation:', error);
-      
-      const cacheKey = `credit_analysis_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-      
-      return {
-        totalCreditSales: 0,
-        outstandingCredit: 0,
-        recognizedCreditRevenue: 0,
-        creditSalesCount: 0,
-        creditCollectionRate: 0,
-        error: handleApiError(error)
-      };
-    }
-  },
-
-  getTransactionMetrics: async (params = {}) => {
-    try {
-      console.log('📈 Fetching transaction metrics...');
-      
-      const cacheKey = `transaction_metrics_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-
-      const response = await quickApi.get('/transactions/metrics', { params });
-      const metrics = response.data?.data || response.data;
-      
-      cache.set(cacheKey, metrics);
-      return metrics;
-    } catch (error) {
-      console.error('❌ Error fetching transaction metrics:', error);
-      
-      return {
-        totalSales: { amount: 0, count: 0, description: '0 transactions' },
-        creditSales: { amount: 0, count: 0, description: '0 credit transactions' },
-        nonCreditSales: { amount: 0, count: 0, description: '0 complete transactions' },
-        totalRevenue: { amount: 0, description: 'From credit & non-credit sales' },
-        expenses: { amount: 0, description: 'Total operational costs' },
-        grossProfit: { amount: 0, description: 'Revenue - Cost of Goods' },
-        netProfit: { amount: 0, description: 'After all expenses' },
-        costOfGoodsSold: { amount: 0, description: 'For credit & non-credit sales' },
-        totalMpesaBank: { amount: 0, description: 'Digital payments' },
-        totalCash: { amount: 0, description: 'Cash payments' },
-        outstandingCredit: { amount: 0, description: 'Unpaid credit balance' },
-        totalCreditGiven: { amount: 0, description: 'Total credit extended' },
-        error: handleApiError(error)
-      };
-    }
-  },
-
-  getCashierDashboardMetrics: async (params = {}) => {
-    try {
-      console.log('👤 Fetching cashier-specific dashboard metrics...');
-      
-      const cacheKey = `cashier_metrics_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-
-      const response = await quickApi.get('/cashier/dashboard-metrics', { params });
-      const metrics = response.data?.data || response.data;
-      
-      cache.set(cacheKey, metrics);
-      return metrics;
-    } catch (error) {
-      console.error('❌ Error fetching cashier dashboard metrics:', error);
-      
-      return {
-        totalSales: 0,
-        totalTransactions: 0,
-        creditSales: 0,
-        nonCreditSales: 0,
-        totalCash: 0,
-        totalMpesaBank: 0,
-        totalCredit: 0,
-        outstandingCredit: 0,
-        itemsSold: 0,
-        averageTransaction: 0,
-        profitMargin: 0,
-        creditTransactions: 0,
-        creditCollectionRate: 0,
-        recognizedCreditRevenue: 0,
-        immediateRevenue: 0,
-        creditImmediateRevenue: 0,
-        error: handleApiError(error)
-      };
-    }
   }
 };
 
-// ==================== OPTIMIZED BASIC CRUD APIs ====================
+// ==================== BASIC API HELPERS ====================
 
-const createBasicAPI = (endpoint) => ({
-  getAll: async (params = {}) => {
-    try {
-      console.log(`📋 Fetching ${endpoint}...`);
-      
-      const cacheKey = `${endpoint}_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-
-      const response = await fastApi.get(`/${endpoint}`, { params });
-      const data = response.data?.data || response.data;
-      const items = Array.isArray(data) ? data : [];
-
-      cache.set(cacheKey, items);
-      return items;
-    } catch (error) {
-      console.error(`❌ Error fetching ${endpoint}:`, error);
-      
-      const cacheKey = `${endpoint}_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      return cached || [];
-    }
-  },
-
-  getById: async (id) => {
-    try {
-      const response = await api.get(`/${endpoint}/${id}`);
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error(`❌ Error fetching ${endpoint}:`, error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  create: async (data) => {
-    try {
-      const response = await quickApi.post(`/${endpoint}`, data);
-      cache.clearAll();
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error(`❌ Error creating ${endpoint}:`, error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  update: async (id, data) => {
-    try {
-      const response = await api.put(`/${endpoint}/${id}`, data);
-      cache.clearAll();
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error(`❌ Error updating ${endpoint}:`, error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  delete: async (id) => {
-    try {
-      const response = await api.delete(`/${endpoint}/${id}`);
-      cache.clearAll();
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error(`❌ Error deleting ${endpoint}:`, error);
-      throw new Error(handleApiError(error));
-    }
-  }
+const getDefaultStats = () => ({
+  totalRevenue: 0,
+  totalSales: 0,
+  creditSales: 0,
+  nonCreditSales: 0,
+  totalExpenses: 0,
+  netProfit: 0,
+  grossProfit: 0,
+  costOfGoodsSold: 0,
+  totalCash: 0,
+  totalMpesaBank: 0,
+  outstandingCredit: 0,
+  totalCreditGiven: 0,
+  creditSalesCount: 0,
+  nonCreditSalesCount: 0,
+  totalItemsSold: 0,
+  profitMargin: 0,
+  creditCollectionRate: 0
 });
 
-export const productAPI = createBasicAPI('products');
-export const shopAPI = createBasicAPI('shops');
-export const cashierAPI = createBasicAPI('cashiers');
+// ==================== SHOP API ====================
 
-// Enhanced expense API
-export const expenseAPI = {
-  ...createBasicAPI('expenses'),
-  
-  getStats: async (params = {}) => {
+export const shopAPI = {
+  getAll: async (params = {}) => {
     try {
-      const response = await quickApi.get('/expenses/stats/overview', { params });
-      return response.data?.data || response.data;
+      const response = await fastApi.get('/shops', { params });
+      return response.data?.data || response.data || [];
     } catch (error) {
-      console.error('❌ Error fetching expense stats:', error);
-      return {
-        overview: { 
-          totalExpenses: 0, 
-          totalAmount: 0, 
-          averageExpense: 0, 
-          minExpense: 0, 
-          maxExpense: 0,
-          expensesCount: 0
-        },
-        byCategory: [],
-        byPaymentMethod: [],
-        byShop: [],
-        recentExpenses: [],
-        trends: {
-          daily: [],
-          weekly: [],
-          monthly: []
-        }
-      };
-    }
-  },
-
-  getByDateRange: async (startDate, endDate) => {
-    try {
-      const response = await quickApi.get('/expenses', {
-        params: { startDate, endDate }
-      });
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching expenses by date range:', error);
+      console.error('Error fetching shops:', error);
       return [];
     }
   }
 };
 
-// ==================== OPTIMIZED REPORT API SERVICE ====================
-
-export const reportAPI = {
-  getDashboardData: async (filters = {}) => {
-    try {
-      console.log('📈 Fetching complete dashboard data...');
-      
-      const [transactionsData, creditAnalysis] = await Promise.all([
-        unifiedAPI.getCombinedTransactions(filters),
-        unifiedAPI.getCombinedCreditAnalysis(filters)
-      ]);
-      
-      const dashboardData = {
-        ...transactionsData,
-        creditAnalysis,
-        creditStats: creditAnalysis,
-        loadedAt: new Date().toISOString(),
-        dataSources: {
-          transactions: transactionsData.transactions?.length || 0,
-          shops: transactionsData.shops?.length || 0,
-          cashiers: transactionsData.cashiers?.length || 0,
-          products: transactionsData.products?.length || 0,
-          credits: transactionsData.credits?.length || 0,
-          expenses: transactionsData.expenses?.length || 0
-        }
-      };
-      
-      console.log('✅ Enhanced dashboard data loaded');
-      return dashboardData;
-    } catch (error) {
-      console.error('❌ Error loading dashboard data:', error);
-      
-      try {
-        const transactionsData = await unifiedAPI.getCombinedTransactions(filters);
-        const creditAnalysis = await unifiedAPI.getCombinedCreditAnalysis(filters);
-        
-        return {
-          ...transactionsData,
-          creditAnalysis,
-          creditStats: creditAnalysis,
-          loadedAt: new Date().toISOString(),
-          dataSources: {
-            transactions: transactionsData.transactions?.length || 0,
-            shops: transactionsData.shops?.length || 0,
-            cashiers: transactionsData.cashiers?.length || 0,
-            products: transactionsData.products?.length || 0,
-            credits: transactionsData.credits?.length || 0,
-            expenses: transactionsData.expenses?.length || 0
-          },
-          error: 'Partial data loaded due to server issues'
-        };
-      } catch (fallbackError) {
-        throw new Error(handleApiError(error));
-      }
-    }
-  },
-
-  getCreditAnalysisReport: async (filters = {}) => {
-    const analysis = await unifiedAPI.getCombinedCreditAnalysis(filters);
-    return {
-      ...analysis,
-      reportGenerated: new Date().toISOString(),
-      filters
-    };
-  },
-
-  getCashierDashboard: async (filters = {}) => {
-    try {
-      console.log('👤 Fetching cashier dashboard data...');
-      
-      const [metrics, transactions] = await Promise.all([
-        unifiedAPI.getCashierDashboardMetrics(filters),
-        unifiedAPI.getCombinedTransactions(filters)
-      ]);
-      
-      return {
-        ...metrics,
-        recentTransactions: transactions.transactions?.slice(0, 10) || [],
-        loadedAt: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('❌ Error loading cashier dashboard data:', error);
-      
-      return {
-        totalSales: 0,
-        totalTransactions: 0,
-        creditSales: 0,
-        nonCreditSales: 0,
-        totalCash: 0,
-        totalMpesaBank: 0,
-        totalCredit: 0,
-        outstandingCredit: 0,
-        recentTransactions: [],
-        error: handleApiError(error)
-      };
-    }
-  }
-};
-
-// ==================== CASHIER ANALYTICS API ====================
-
-export const cashierAnalyticsAPI = {
-  getCashierAnalytics: async (cashierId, params = {}) => {
-    try {
-      console.log('📊 Fetching cashier analytics...', { cashierId, params });
-      
-      const cacheKey = `cashier_analytics_${cashierId}_${JSON.stringify(params)}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-
-      const response = await quickApi.get(`/cashiers/${cashierId}/analytics`, { params });
-      const analyticsData = response.data?.data || response.data;
-      
-      cache.set(cacheKey, analyticsData);
-      return analyticsData;
-    } catch (error) {
-      console.error('❌ Error fetching cashier analytics:', error);
-      
-      return {
-        cashier: null,
-        metrics: {
-          totalRevenue: 0,
-          totalCost: 0,
-          totalProfit: 0,
-          totalTransactions: 0,
-          totalItemsSold: 0,
-          profitMargin: 0,
-          creditSalesCount: 0,
-          totalCreditAmount: 0,
-          outstandingCredit: 0,
-          averageTransactionValue: 0,
-          creditCollectionRate: 0
-        },
-        dailyPerformance: [],
-        topProducts: [],
-        credits: [],
-        period: {
-          start: new Date().toISOString().split('T')[0],
-          end: new Date().toISOString().split('T')[0],
-          timeRange: '7d'
-        },
-        error: handleApiError(error)
-      };
-    }
-  },
-
-  getCashierPerformance: async (cashierId, params = {}) => {
-    try {
-      const response = await quickApi.get(`/cashiers/${cashierId}/performance`, { params });
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching cashier performance:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  getCashierTransactions: async (cashierId, params = {}) => {
-    try {
-      const response = await quickApi.get(`/cashiers/${cashierId}/transactions`, { params });
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching cashier transactions:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  getCashierCredits: async (cashierId, params = {}) => {
-    try {
-      const response = await quickApi.get(`/cashiers/${cashierId}/credits`, { params });
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching cashier credits:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-
-  getCashiersWithMetrics: async (params = {}) => {
-    try {
-      const response = await quickApi.get('/cashiers-with-metrics', { params });
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching cashiers with metrics:', error);
-      throw new Error(handleApiError(error));
-    }
-  }
-};
-
-// ==================== ADMIN API SERVICE ====================
-
-export const adminAPI = {
-  // Admin-specific endpoints
-  getVerificationRequests: authAPI.getVerificationRequests,
-  verifyDevice: authAPI.verifyDevice,
-  
-  getDashboardStats: async (params = {}) => {
-    try {
-      const response = await api.get('/admin/dashboard/stats', { params });
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching admin dashboard stats:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-  
-  getUsers: async (params = {}) => {
-    try {
-      const response = await api.get('/admin/users', { params });
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching users:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-  
-  getUserById: async (userId) => {
-    try {
-      const response = await api.get(`/admin/users/${userId}`);
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching user:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-  
-  updateUser: async (userId, data) => {
-    try {
-      const response = await api.put(`/admin/users/${userId}`, data);
-      cache.clearAll();
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error updating user:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-  
-  deleteUser: async (userId) => {
-    try {
-      const response = await api.delete(`/admin/users/${userId}`);
-      cache.clearAll();
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error deleting user:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-  
-  getSystemSettings: async () => {
-    try {
-      const response = await api.get('/admin/settings');
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching system settings:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-  
-  updateSystemSettings: async (settings) => {
-    try {
-      const response = await api.put('/admin/settings', settings);
-      cache.clearAll();
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error updating system settings:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-  
-  getActivityLogs: async (params = {}) => {
-    try {
-      const response = await api.get('/admin/activity-logs', { params });
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching activity logs:', error);
-      throw new Error(handleApiError(error));
-    }
-  },
-  
-  getSystemHealth: async () => {
-    try {
-      const response = await api.get('/admin/health');
-      return response.data?.data || response.data;
-    } catch (error) {
-      console.error('❌ Error fetching system health:', error);
-      throw new Error(handleApiError(error));
-    }
-  }
-};
-
-// ==================== MAIN API SERVICE ====================
-
+// Export main API service
 const apiService = {
-  unified: unifiedAPI,
   auth: authAPI,
-  transactions: transactionAPI,
-  products: productAPI,
-  shops: shopAPI,
-  cashiers: cashierAPI,
-  expenses: expenseAPI,
-  credits: creditAPI,
-  reports: reportAPI,
-  cashierAnalytics: cashierAnalyticsAPI,
-  admin: adminAPI,
-  handleApiError,
+  unified: unifiedAPI,
+  shop: shopAPI,
   cache,
   clearCache: () => cache.clearAll(),
-  getCacheStats: () => ({
-    size: Object.keys(cache.data).length,
-    keys: Object.keys(cache.data)
-  })
+  handleApiError
 };
 
 export default apiService;
-export { handleApiError };

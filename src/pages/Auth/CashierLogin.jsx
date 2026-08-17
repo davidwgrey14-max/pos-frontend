@@ -1,46 +1,31 @@
-// src/pages/Cashier/CashierLogin.jsx - UPDATED MUI VERSION
-import React, { useState } from 'react';
+// src/pages/Cashier/CashierLogin.jsx - Enhanced with device verification
+import React, { useState, useEffect } from 'react';
 import { 
-  Container,
-  Box,
-  Typography,
-  Avatar,
-  Paper,
-  CssBaseline,
-  Alert,
-  Button,
-  CircularProgress,
-  TextField,
-  InputAdornment,
-  IconButton
+  Container, Box, Typography, Avatar, Paper, CssBaseline, Alert, Button,
+  CircularProgress, TextField, InputAdornment, IconButton, Dialog,
+  DialogTitle, DialogContent, DialogActions, LinearProgress
 } from '@mui/material';
-import { 
-  PointOfSale,
-  ArrowBack,
-  Visibility,
-  VisibilityOff
-} from '@mui/icons-material';
+import { PointOfSale, ArrowBack, Visibility, VisibilityOff, Devices } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useSecurity } from '../../contexts/SecurityContext';
 import { authAPI } from '../../services/api';
 
 const CashierLogin = () => {
   const navigate = useNavigate();
+  const { login } = useSecurity();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [showDeviceDialog, setShowDeviceDialog] = useState(false);
+  const [deviceInfo, setDeviceInfo] = useState(null);
+  const [verificationStatus, setVerificationStatus] = useState('checking');
   const [credentials, setCredentials] = useState({
     email: '',
     password: ''
   });
 
-  // Color scheme matching the home.jsx
+  // Color scheme
   const colors = {
-    primary: {
-      main: '#6366F1',
-      light: '#818CF8',
-      dark: '#4F46E5',
-      gradient: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)'
-    },
     cashier: {
       main: '#10B981',
       light: '#34D399',
@@ -49,9 +34,89 @@ const CashierLogin = () => {
     },
     background: {
       main: '#0F172A',
-      light: '#1E293B',
       paper: '#334155'
     }
+  };
+
+  const getDeviceInfo = () => {
+    const userAgent = navigator.userAgent;
+    return {
+      deviceId: localStorage.getItem('deviceId') || generateDeviceId(),
+      deviceName: getDeviceName(userAgent),
+      deviceType: getDeviceType(userAgent),
+      os: getOS(userAgent),
+      osVersion: getOSVersion(userAgent),
+      browser: getBrowser(userAgent),
+      browserVersion: getBrowserVersion(userAgent),
+      macAddress: generateMacAddress(),
+      userAgent: userAgent,
+      ipAddress: 'detected'
+    };
+  };
+
+  const generateDeviceId = () => {
+    const id = 'dev_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem('deviceId', id);
+    return id;
+  };
+
+  const getDeviceName = (ua) => {
+    if (ua.includes('Windows')) return 'Windows PC';
+    if (ua.includes('Mac')) return 'Mac';
+    if (ua.includes('iPhone')) return 'iPhone';
+    if (ua.includes('iPad')) return 'iPad';
+    if (ua.includes('Android')) return 'Android Device';
+    return 'Unknown Device';
+  };
+
+  const getDeviceType = (ua) => {
+    if (ua.includes('Mobile')) return 'mobile';
+    if (ua.includes('Tablet')) return 'tablet';
+    return 'desktop';
+  };
+
+  const getOS = (ua) => {
+    if (ua.includes('Windows NT 10.0')) return 'Windows 10';
+    if (ua.includes('Windows NT 6.1')) return 'Windows 7';
+    if (ua.includes('Mac OS X')) return 'macOS';
+    if (ua.includes('iPhone')) return 'iOS';
+    if (ua.includes('Android')) return 'Android';
+    return 'Unknown';
+  };
+
+  const getOSVersion = (ua) => {
+    const match = ua.match(/Windows NT (\d+\.\d+)/) || 
+                  ua.match(/Mac OS X (\d+[._]\d+)/) ||
+                  ua.match(/Android (\d+[._]\d+)/);
+    return match ? match[1] : 'Unknown';
+  };
+
+  const getBrowser = (ua) => {
+    if (ua.includes('Chrome') && !ua.includes('Edg')) return 'Chrome';
+    if (ua.includes('Firefox')) return 'Firefox';
+    if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
+    if (ua.includes('Edg')) return 'Edge';
+    return 'Unknown';
+  };
+
+  const getBrowserVersion = (ua) => {
+    const match = ua.match(/Chrome\/(\d+)/) ||
+                  ua.match(/Firefox\/(\d+)/) ||
+                  ua.match(/Version\/(\d+)/);
+    return match ? match[1] : 'Unknown';
+  };
+
+  const generateMacAddress = () => {
+    const chars = '0123456789ABCDEF';
+    let mac = '';
+    for (let i = 0; i < 6; i++) {
+      let octet = '';
+      for (let j = 0; j < 2; j++) {
+        octet += chars[Math.floor(Math.random() * 16)];
+      }
+      mac += (i > 0 ? ':' : '') + octet;
+    }
+    return mac;
   };
 
   const handleLogin = async (e) => {
@@ -62,7 +127,6 @@ const CashierLogin = () => {
       return;
     }
     
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(credentials.email)) {
       setError('Please enter a valid email address');
@@ -73,136 +137,45 @@ const CashierLogin = () => {
     setError(null);
     
     try {
-      console.log('🚀 Attempting cashier login...');
-      console.log('📧 Email:', credentials.email);
-      
-      // Cashier login API call using email and password
+      // First check if device is verified
+      const deviceInfo = getDeviceInfo();
+      const deviceCheck = await authAPI.checkDevice({ 
+        email: credentials.email, 
+        deviceInfo 
+      });
+
+      if (deviceCheck.requiresVerification) {
+        setDeviceInfo(deviceCheck.deviceInfo);
+        setShowDeviceDialog(true);
+        setVerificationStatus('pending');
+        setLoading(false);
+        return;
+      }
+
+      // Proceed with login
       const response = await authAPI.cashierLogin({
         email: credentials.email,
         password: credentials.password
       });
 
-      console.log('✅ Raw login response:', response);
-      
-      // Handle different response structures
-      let responseData;
-      if (response && typeof response === 'object') {
-        // Check if response has data property (Axios response)
-        if (response.data !== undefined) {
-          responseData = response.data;
-          console.log('📦 Response structure: Axios-style (response.data)');
-        } 
-        // Check if response is the actual data directly
-        else if (response.success !== undefined) {
-          responseData = response;
-          console.log('📦 Response structure: Direct data (response)');
-        }
-        else {
-          responseData = response;
-          console.log('📦 Response structure: Unknown, using response directly');
-        }
-      } else {
-        throw new Error('Invalid response format: ' + typeof response);
-      }
-      
-      console.log('✅ Processed response data:', responseData);
-      
-      if (!responseData) {
-        throw new Error('Could not extract response data');
-      }
-      
-      // FIXED: Check for success property in responseData
-      if (responseData.success === true || responseData.user || responseData.cashier) {
-        // Extract cashier data from response
-        const cashierData = responseData.data || responseData.cashier || responseData.user || responseData;
-        
-        if (!cashierData || !cashierData._id) {
-          throw new Error('No valid cashier data received');
-        }
-
-        // Verify cashier has appropriate role
-        const allowedRoles = ['cashier', 'manager', 'admin'];
-        if (cashierData.role && !allowedRoles.includes(cashierData.role)) {
-          throw new Error('Access denied. Cashier privileges required.');
-        }
-        
-        // Check if account is active
-        if (cashierData.status === 'inactive' || cashierData.isActive === false) {
-          throw new Error('Cashier account is inactive. Please contact administrator.');
-        }
-
-        // Store cashier data (no tokens) - FIXED: Ensure all required fields
-        const authData = {
-          _id: cashierData._id,
-          name: cashierData.name || cashierData.email?.split('@')[0] || 'Cashier',
-          email: cashierData.email,
-          role: cashierData.role || 'cashier',
-          loginTime: new Date().toISOString(),
-          // Include any other relevant fields
-          ...(cashierData.shop && { shop: cashierData.shop }),
-          ...(cashierData.permissions && { permissions: cashierData.permissions })
+      if (response.success) {
+        const userData = response.user || {
+          email: credentials.email,
+          role: 'cashier',
+          name: 'Cashier'
         };
+
+        login(userData, response.token, response.sessionId);
         
-        // Store in localStorage - FIXED: Using correct key and structure
-        localStorage.setItem('cashierData', JSON.stringify(authData));
-        
-        console.log('✅ Cashier login successful - Stored data:', authData);
-        console.log('👤 Logged in as:', authData.name);
-        console.log('🎯 Role:', authData.role);
-        
-        // FIXED: Redirect to SHOP SELECTION first, not dashboard
         navigate('/cashier/shops', { 
           replace: true,
-          state: { 
-            loginSuccess: true,
-            cashierName: authData.name
-          }
+          state: { loginSuccess: true }
         });
-        
       } else {
-        // FIXED: Use the message from responseData if available
-        const errorMessage = responseData.message || 'Login failed. Please check your credentials.';
-        throw new Error(errorMessage);
+        setError(response.message || 'Login failed');
       }
     } catch (err) {
-      console.error('❌ Cashier login error:', err);
-      
-      // Enhanced error handling
-      if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
-        setError('Cannot connect to server. Please check if backend is running on port 5001.');
-        return;
-      }
-      
-      if (err.code === 'ECONNABORTED') {
-        setError('Request timeout. Server may be busy. Please try again.');
-        return;
-      }
-      
-      if (err.response) {
-        const status = err.response.status;
-        const errorData = err.response.data || {};
-        const errorMessage = errorData.message || err.message;
-        
-        switch (status) {
-          case 401:
-            setError('Invalid email or password. Please try again.');
-            break;
-          case 403:
-            setError('Access denied. You do not have cashier privileges.');
-            break;
-          case 404:
-            setError('Cashier account not found. Please contact administrator.');
-            break;
-          case 500:
-            setError('Server error. Please try again later.');
-            break;
-          default:
-            setError(errorMessage || `Login failed (Status: ${status})`);
-        }
-      } else {
-        // FIXED: Use the actual error message from the caught error
-        setError(err.message || 'An unexpected error occurred. Please try again.');
-      }
+      setError(err.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -210,30 +183,12 @@ const CashierLogin = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setCredentials(prev => ({ 
-      ...prev, 
-      [name]: value 
-    }));
-    
-    // Clear error when user starts typing
-    if (error) {
-      setError(null);
-    }
+    setCredentials(prev => ({ ...prev, [name]: value }));
+    if (error) setError(null);
   };
 
-  const handleBackToMain = () => {
-    navigate('/');
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !loading) {
-      handleLogin(e);
-    }
-  };
-
-  const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
-  };
+  const handleBackToMain = () => navigate('/');
+  const togglePasswordVisibility = () => setShowPassword(!showPassword);
 
   return (
     <Container 
@@ -250,112 +205,50 @@ const CashierLogin = () => {
     >
       <CssBaseline />
       
-      {/* Back Button */}
-      <Box sx={{ 
-        mb: 2,
-        display: 'flex',
-        justifyContent: 'flex-start'
-      }}>
+      <Box sx={{ mb: 2 }}>
         <Button
           startIcon={<ArrowBack />}
           onClick={handleBackToMain}
-          sx={{ 
-            color: 'rgba(255, 255, 255, 0.7)',
-            '&:hover': {
-              backgroundColor: 'rgba(255, 255, 255, 0.1)',
-              color: 'white'
-            }
-          }}
+          sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
           disabled={loading}
         >
           Back to Main
         </Button>
       </Box>
 
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center',
-          justifyContent: 'center',
-          flex: 1
-        }}
-      >
-        {/* Logo/Icon */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
         <Avatar sx={{ 
-          width: 70, 
-          height: 70,
+          width: 70, height: 70,
           background: colors.cashier.gradient,
           mb: 2,
           boxShadow: '0 8px 25px rgba(16, 185, 129, 0.3)'
         }}>
-          {loading ? (
-            <CircularProgress size={24} color="inherit" />
-          ) : (
-            <PointOfSale sx={{ fontSize: 36 }} />
-          )}
+          {loading ? <CircularProgress size={24} color="inherit" /> : <PointOfSale sx={{ fontSize: 36 }} />}
         </Avatar>
 
-        {/* Title */}
-        <Typography 
-          variant="h4" 
-          sx={{ 
-            mb: 1,
-            fontWeight: 'bold',
-            background: colors.cashier.gradient,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            textAlign: 'center'
-          }}
-        >
+        <Typography variant="h4" sx={{ 
+          mb: 1,
+          fontWeight: 'bold',
+          background: colors.cashier.gradient,
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          textAlign: 'center'
+        }}>
           Cashier Login
         </Typography>
 
-        {/* Subtitle */}
-        <Typography 
-          variant="body1" 
-          sx={{ 
-            mb: 3,
-            color: 'rgba(255, 255, 255, 0.8)',
-            textAlign: 'center'
-          }}
-        >
-          Sign in to access your POS system
-        </Typography>
-
-        {/* Error Alert */}
         {error && (
-          <Alert 
-            severity="error"
-            sx={{ 
-              width: '100%', 
-              mb: 3,
-              borderRadius: 2,
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              color: 'white',
-              border: '1px solid rgba(239, 68, 68, 0.3)'
-            }} 
-            onClose={() => setError(null)}
-          >
+          <Alert severity="error" sx={{ width: '100%', mb: 3, borderRadius: 2 }} onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
-        {/* Login Form */}
-        <Paper 
-          elevation={8} 
-          sx={{ 
-            p: 4,
-            width: '100%',
-            borderRadius: 3,
-            background: `linear-gradient(135deg, ${colors.background.paper} 0%, rgba(51, 65, 85, 0.9) 100%)`,
-            border: `1px solid rgba(16, 185, 129, 0.2)`,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
-          }}
-        >
-          <Box component="form" onSubmit={handleLogin} noValidate>
-            {/* Email Field */}
+        <Paper elevation={8} sx={{ 
+          p: 4, width: '100%', borderRadius: 3,
+          background: `linear-gradient(135deg, ${colors.background.paper} 0%, rgba(51, 65, 85, 0.9) 100%)`,
+          border: `1px solid rgba(16, 185, 129, 0.2)`
+        }}>
+          <form onSubmit={handleLogin}>
             <TextField
               margin="normal"
               required
@@ -366,39 +259,28 @@ const CashierLogin = () => {
               type="email"
               value={credentials.email}
               onChange={handleChange}
-              onKeyPress={handleKeyPress}
               disabled={loading}
               autoComplete="email"
               autoFocus
-              placeholder="Enter your email"
               sx={{ mb: 2 }}
               InputProps={{
                 sx: { 
                   borderRadius: 2,
                   backgroundColor: 'rgba(255, 255, 255, 0.05)',
                   color: 'white',
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(255, 255, 255, 0.2)',
-                  },
-                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(16, 185, 129, 0.5)',
-                  },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: colors.cashier.main,
-                  }
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.2)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(16, 185, 129, 0.5)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: colors.cashier.main }
                 }
               }}
               InputLabelProps={{
                 sx: {
                   color: 'rgba(255, 255, 255, 0.7)',
-                  '&.Mui-focused': {
-                    color: colors.cashier.light,
-                  }
+                  '&.Mui-focused': { color: colors.cashier.light }
                 }
               }}
             />
             
-            {/* Password Field */}
             <TextField
               margin="normal"
               required
@@ -408,39 +290,25 @@ const CashierLogin = () => {
               type={showPassword ? 'text' : 'password'}
               value={credentials.password}
               onChange={handleChange}
-              onKeyPress={handleKeyPress}
               disabled={loading}
               autoComplete="current-password"
-              placeholder="Enter your password"
               InputProps={{
                 sx: { 
                   borderRadius: 2,
                   backgroundColor: 'rgba(255, 255, 255, 0.05)',
                   color: 'white',
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(255, 255, 255, 0.2)',
-                  },
-                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(16, 185, 129, 0.5)',
-                  },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: colors.cashier.main,
-                  }
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.2)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(16, 185, 129, 0.5)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: colors.cashier.main }
                 },
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
-                      aria-label="toggle password visibility"
                       onClick={togglePasswordVisibility}
                       onMouseDown={(e) => e.preventDefault()}
                       edge="end"
                       disabled={loading}
-                      sx={{ 
-                        color: 'rgba(255, 255, 255, 0.5)',
-                        '&:hover': {
-                          color: colors.cashier.light
-                        }
-                      }}
+                      sx={{ color: 'rgba(255, 255, 255, 0.5)' }}
                     >
                       {showPassword ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
@@ -450,14 +318,11 @@ const CashierLogin = () => {
               InputLabelProps={{
                 sx: {
                   color: 'rgba(255, 255, 255, 0.7)',
-                  '&.Mui-focused': {
-                    color: colors.cashier.light,
-                  }
+                  '&.Mui-focused': { color: colors.cashier.light }
                 }
               }}
             />
 
-            {/* Login Button */}
             <Button
               type="submit"
               fullWidth
@@ -465,8 +330,7 @@ const CashierLogin = () => {
               size="large"
               disabled={loading || !credentials.email || !credentials.password}
               sx={{ 
-                mt: 3, 
-                mb: 2,
+                mt: 3, mb: 2,
                 py: 1.5,
                 background: colors.cashier.gradient,
                 borderRadius: 2,
@@ -485,17 +349,63 @@ const CashierLogin = () => {
                 transition: 'all 0.3s ease'
               }}
             >
-              {loading ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                'Sign In'
-              )}
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
             </Button>
-          </Box>
+          </form>
         </Paper>
-
-        {/* Removed the instructional text as requested */}
       </Box>
+
+      {/* Device Verification Dialog */}
+      <Dialog open={showDeviceDialog} onClose={() => setShowDeviceDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Devices color="warning" />
+          Device Verification Required
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            A new device is trying to access your account. Please wait for admin approval.
+          </Alert>
+          
+          {deviceInfo && (
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+              <Typography variant="subtitle2" gutterBottom>Device Details:</Typography>
+              <Typography variant="body2" color="text.secondary">
+                <strong>Device:</strong> {deviceInfo.deviceName}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                <strong>OS:</strong> {deviceInfo.os} {deviceInfo.osVersion}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                <strong>Browser:</strong> {deviceInfo.browser} {deviceInfo.browserVersion}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                <strong>MAC:</strong> {deviceInfo.macAddress}
+              </Typography>
+            </Paper>
+          )}
+          
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              An email has been sent to administrators. Please wait for approval or try again later.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowDeviceDialog(false)} color="primary">
+            Dismiss
+          </Button>
+          <Button 
+            onClick={() => {
+              setShowDeviceDialog(false);
+              setCredentials(prev => ({ ...prev, password: '' }));
+            }}
+            color="primary"
+            variant="contained"
+          >
+            Try Again
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

@@ -1,4 +1,4 @@
-// src/pages/Admin/AdminDashboard.jsx
+// src/pages/Admin/AdminDashboard.jsx - UPDATED WITH SECURITY FEATURES
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
@@ -34,15 +34,18 @@ import {
   FilterOutlined,
   BankOutlined,
   CreditCardFilled,
-  WalletOutlined
+  WalletOutlined,
+  SecurityOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useSecurity } from '../../contexts/SecurityContext';
 import { 
   unifiedAPI, 
   shopAPI, 
-  reportAPI 
+  authAPI 
 } from '../../services/api';
-import { CalculationUtils } from '../../utils/calculationUtils';
 import './AdminDashboard.css';
 
 const { Header, Sider, Content } = Layout;
@@ -52,16 +55,17 @@ const { Search } = Input;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
-// Enhanced Admin Dashboard Component with Unified API Integration
+// Enhanced Admin Dashboard Component with Security Integration
 const AdminDashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, logout, timeRemaining, isSessionExpiring, refreshSession } = useSecurity();
   const [collapsed, setCollapsed] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState({
-    financialStats: CalculationUtils.getDefaultStatsWithCreditManagement(),
+    financialStats: getDefaultStats(),
     businessStats: {
       totalProducts: 0,
       totalShops: 0,
@@ -74,7 +78,8 @@ const AdminDashboard = () => {
     topProducts: [],
     shopPerformance: [],
     creditAlerts: [],
-    cashierPerformance: []
+    cashierPerformance: [],
+    pendingVerifications: []
   });
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [viewModalContent, setViewModalContent] = useState(null);
@@ -83,14 +88,67 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dataTimestamp, setDataTimestamp] = useState(null);
   const [shops, setShops] = useState([]);
-  
-  // Filter states
+  const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState({
     dateRange: null,
     shop: 'all',
     autoRefresh: false
   });
-  const [filterVisible, setFilterVisible] = useState(false);
+
+  // User menu items with security features
+  const userMenuItems = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: 'Profile Settings'
+    },
+    {
+      key: 'devices',
+      icon: <SecurityOutlined />,
+      label: 'Manage Devices',
+      onClick: () => navigate('/admin/verify-device')
+    },
+    {
+      key: 'sessions',
+      icon: <HistoryOutlined />,
+      label: 'Active Sessions'
+    },
+    {
+      type: 'divider'
+    },
+    {
+      key: 'refresh',
+      icon: <ReloadOutlined />,
+      label: 'Refresh Session',
+      onClick: async () => {
+        try {
+          await refreshSession();
+          message.success('Session refreshed successfully');
+        } catch (error) {
+          message.error('Failed to refresh session');
+        }
+      }
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: `Logout${timeRemaining ? ` (${timeRemaining}s)` : ''}`,
+      danger: true,
+      onClick: () => {
+        Modal.confirm({
+          title: 'Confirm Logout',
+          content: 'Are you sure you want to logout?',
+          okText: 'Yes, Logout',
+          cancelText: 'Cancel',
+          onOk: () => {
+            logout('manual');
+            navigate('/cashier-login');
+            message.success('Logged out successfully');
+          }
+        });
+      }
+    }
+  ];
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -98,6 +156,7 @@ const AdminDashboard = () => {
     }, 3000);
     
     fetchDashboardData();
+    fetchPendingVerifications();
     
     return () => clearTimeout(timer);
   }, []);
@@ -110,7 +169,8 @@ const AdminDashboard = () => {
       intervalId = setInterval(() => {
         console.log('🔄 Auto-refreshing dashboard data...');
         fetchDashboardData();
-      }, 30000); // Refresh every 30 seconds
+        fetchPendingVerifications();
+      }, 30000);
     }
     
     return () => {
@@ -120,288 +180,244 @@ const AdminDashboard = () => {
     };
   }, [filters.autoRefresh]);
 
-  // ENHANCED: Data fetching with unified API integration
+  // Fetch pending verifications for admin
+  const fetchPendingVerifications = async () => {
+    try {
+      const response = await authAPI.getVerificationRequests();
+      if (response.success) {
+        setDashboardData(prev => ({
+          ...prev,
+          pendingVerifications: response.data || []
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching pending verifications:', error);
+    }
+  };
+
+  // Fetch dashboard data
   const fetchDashboardData = async (customFilters = null) => {
     const activeFilters = customFilters || filters;
     
-    console.log('🚀 Fetching dashboard data with unified API...', activeFilters);
+    console.log('🚀 Fetching dashboard data...', activeFilters);
     
     try {
       setLoading(true);
       setRefreshing(true);
       
-      // Fetch shops first for filtering
+      // Fetch shops
       const shopsData = await shopAPI.getAll();
       setShops(shopsData);
 
-      // Build params for unified API
+      // Build params
       const params = {};
-      
-      // Apply date range filter
       if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
         params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
         params.endDate = activeFilters.dateRange[1].format('YYYY-MM-DD');
       }
-      
-      // Apply shop filter
       if (activeFilters.shop && activeFilters.shop !== 'all') {
         params.shopId = activeFilters.shop;
       }
 
-      // Use unified API endpoint (same as Transaction Report)
+      // Fetch combined data
       const comprehensiveData = await unifiedAPI.getCombinedTransactions(params);
       
-      console.log('📊 Unified API response:', {
-        transactions: comprehensiveData.salesWithProfit?.length,
-        financialStats: comprehensiveData.financialStats,
-        hasEnhancedStats: !!comprehensiveData.enhancedStats
-      });
-
-      // Process data using the same utility as Transaction Report
       const processedData = processDashboardData(comprehensiveData, shopsData, activeFilters);
 
-      setDashboardData(processedData);
+      setDashboardData(prev => ({
+        ...processedData,
+        pendingVerifications: prev.pendingVerifications || []
+      }));
       setDataTimestamp(new Date().toISOString());
       
-      console.log('✅ Dashboard data processed:', {
-        totalRevenue: processedData.financialStats.totalRevenue,
-        netProfit: processedData.financialStats.netProfit,
-        creditSales: processedData.financialStats.creditSales,
-        recentTransactions: processedData.recentTransactions.length
-      });
+      console.log('✅ Dashboard data processed');
       
-      message.success(`Dashboard refreshed - ${processedData.financialStats.totalSales} transactions`);
-  
     } catch (error) {
       console.error('💥 Dashboard fetch failed:', error);
-      await fetchDataWithFallback(activeFilters);
+      message.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  // ENHANCED: Fallback with unified API structure
-  const fetchDataWithFallback = async (activeFilters) => {
-    try {
-      const shopsData = await shopAPI.getAll();
-      setShops(shopsData);
+  // Process dashboard data
+  const processDashboardData = (comprehensiveData, shops, activeFilters) => {
+    const transactions = comprehensiveData.salesWithProfit || [];
+    const financialStats = comprehensiveData.financialStats || getDefaultStats();
+    const products = comprehensiveData.products || [];
+    const expenses = comprehensiveData.expenses || [];
+    const credits = comprehensiveData.credits || [];
+    const cashiers = comprehensiveData.cashiers || [];
 
-      // Build basic params for fallback
-      const params = {};
-      if (activeFilters.shop && activeFilters.shop !== 'all') {
-        params.shopId = activeFilters.shop;
-      }
+    // Recent transactions
+    const recentTransactions = transactions
+      .sort((a, b) => new Date(b.saleDate || b.createdAt) - new Date(a.saleDate || a.createdAt))
+      .slice(0, 10);
 
-      const comprehensiveData = await unifiedAPI.getCombinedTransactions(params);
-      const processedData = processDashboardData(comprehensiveData, shopsData, activeFilters);
+    // Low stock products
+    const lowStockProducts = products.filter(p => 
+      (p.currentStock || 0) <= (p.minStockLevel || 5)
+    ).slice(0, 5);
 
-      setDashboardData(processedData);
-      setDataTimestamp(new Date().toISOString());
-      
-    } catch (fallbackError) {
-      console.error('💥 Fallback data fetch failed:', fallbackError);
-      message.error('Failed to load dashboard data');
-      
-      // Set empty data structure
-      setDashboardData({
-        financialStats: CalculationUtils.getDefaultStatsWithCreditManagement(),
-        businessStats: {
-          totalProducts: 0,
-          totalShops: 0,
-          totalCashiers: 0,
-          lowStockCount: 0,
-          activeCredits: 0
-        },
-        recentTransactions: [],
-        lowStockProducts: [],
-        topProducts: [],
-        shopPerformance: [],
-        creditAlerts: [],
-        cashierPerformance: []
+    // Top products
+    const topProducts = calculateTopProducts(transactions, 5);
+
+    // Shop performance
+    const shopPerformance = calculateShopPerformance(transactions, shops);
+
+    // Cashier performance
+    const cashierPerformance = calculateCashierPerformance(transactions, cashiers);
+
+    // Credit alerts
+    const creditAlerts = credits
+      .filter(credit => {
+        const isOverdue = credit.dueDate && new Date(credit.dueDate) < new Date() && 
+                         (credit.balanceDue || 0) > 0;
+        if (activeFilters.shop && activeFilters.shop !== 'all') {
+          const creditShopId = credit.shopId || (credit.shop && typeof credit.shop === 'object' ? credit.shop._id : credit.shop);
+          return isOverdue && creditShopId === activeFilters.shop;
+        }
+        return isOverdue;
+      })
+      .slice(0, 5);
+
+    return {
+      financialStats,
+      businessStats: {
+        totalProducts: products.length,
+        totalShops: shops.length,
+        totalCashiers: cashiers.length,
+        lowStockCount: lowStockProducts.length,
+        activeCredits: credits.filter(c => c.status !== 'paid' && (c.balanceDue || 0) > 0).length
+      },
+      recentTransactions,
+      lowStockProducts,
+      topProducts,
+      shopPerformance,
+      cashierPerformance,
+      creditAlerts
+    };
+  };
+
+  // Helper: Calculate top products
+  const calculateTopProducts = (transactions, limit = 5) => {
+    const productMap = {};
+    transactions.forEach(transaction => {
+      transaction.items?.forEach(item => {
+        const productId = item.productId?.toString() || item.productName;
+        const productName = item.productName || 'Unknown Product';
+        if (!productMap[productId]) {
+          productMap[productId] = {
+            id: productId,
+            name: productName,
+            totalSold: 0,
+            totalRevenue: 0,
+            totalProfit: 0
+          };
+        }
+        const quantity = item.quantity || 1;
+        const revenue = item.totalPrice || (item.price * quantity);
+        const cost = (item.buyingPrice || 0) * quantity;
+        productMap[productId].totalSold += quantity;
+        productMap[productId].totalRevenue += revenue;
+        productMap[productId].totalProfit += (revenue - cost);
       });
-    }
+    });
+    return Object.values(productMap)
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, limit);
   };
 
-// ENHANCED: Dashboard data processing aligned with Transaction Report
-const processDashboardData = (comprehensiveData, shops, activeFilters) => {
-  console.log('🔄 Processing dashboard data with unified structure...');
-  
-  // Use the same data processing as Transaction Report
-  const processedData = CalculationUtils.processComprehensiveData(
-    comprehensiveData, 
-    activeFilters.shop === 'all' ? null : activeFilters.shop,
-    { 
-      includePerformance: true,
-      includeProducts: true 
-    }
-  );
-
-  // Extract data from processed structure
-  const transactions = processedData.salesWithProfit || [];
-  const financialStats = processedData.financialStats || CalculationUtils.getDefaultStatsWithCreditManagement();
-  const products = processedData.products || [];
-  const expenses = processedData.expenses || [];
-  const credits = processedData.credits || [];
-  const cashiers = processedData.cashiers || [];
-
-  console.log('📈 Processed data extracted:', {
-    transactions: transactions.length,
-    products: products.length,
-    expenses: expenses.length,
-    credits: credits.length,
-    cashiers: cashiers.length
-  });
-
-  // Apply date range filter to transactions if needed
-  let filteredTransactions = transactions;
-  if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
-    filteredTransactions = CalculationUtils.filterDataByDateRange(
-      transactions,
-      activeFilters.dateRange[0],
-      activeFilters.dateRange[1],
-      'saleDate'
-    );
-  }
-
-  // Recent transactions (last 10)
-  const recentTransactions = filteredTransactions
-    .sort((a, b) => new Date(b.saleDate || b.createdAt) - new Date(a.saleDate || a.createdAt))
-    .slice(0, 10);
-
-  // Low stock products
-  const lowStockProducts = products.filter(p => 
-    CalculationUtils.safeNumber(p.currentStock) <= CalculationUtils.safeNumber(p.minStockLevel, 5)
-  ).slice(0, 5);
-
-  // Top products using same calculation as Transaction Report
-  const topProducts = CalculationUtils.calculateTopProducts(filteredTransactions, 5);
-
-  // Shop performance using same calculation as Transaction Report
-  const shopPerformance = CalculationUtils.calculateShopPerformance(filteredTransactions, shops);
-
-  // Cashier performance using same calculation as Transaction Report
-  const cashierPerformance = CalculationUtils.calculateCashierPerformance(filteredTransactions, cashiers);
-
-  // Credit alerts (overdue credits)
-  const creditAlerts = credits
-    .filter(credit => {
-      const isOverdue = credit.dueDate && new Date(credit.dueDate) < new Date() && 
-                       CalculationUtils.safeNumber(credit.balanceDue) > 0;
-      
-      // Apply shop filter if needed
-      if (activeFilters.shop && activeFilters.shop !== 'all') {
-        const creditShopId = credit.shopId || (credit.shop && typeof credit.shop === 'object' ? credit.shop._id : credit.shop);
-        return isOverdue && creditShopId === activeFilters.shop;
+  // Helper: Calculate shop performance
+  const calculateShopPerformance = (transactions, shops) => {
+    const shopMap = {};
+    transactions.forEach(transaction => {
+      const shopId = transaction.shop || transaction.shopId;
+      if (!shopId) return;
+      if (!shopMap[shopId]) {
+        const shop = shops.find(s => s._id?.toString() === shopId?.toString()) ||
+                    { name: 'Unknown Shop' };
+        shopMap[shopId] = {
+          id: shopId,
+          name: shop.name || 'Unknown Shop',
+          revenue: 0,
+          transactions: 0,
+          profit: 0
+        };
       }
-      
-      return isOverdue;
-    })
-    .slice(0, 5);
-
-  // ENHANCE COGS CALCULATION: Use the same robust calculation as in calculateFinancialStatsWithCreditManagement
-  const costOfGoodsSold = financialStats.costOfGoodsSold || 
-                         filteredTransactions.reduce((sum, t) => {
-                           // Calculate from transaction cost or items using the same logic as in main calculations
-                           if (t.cost) {
-                             return sum + CalculationUtils.safeNumber(t.cost);
-                           }
-                           
-                           // Calculate from items as fallback using the utility function
-                           return sum + CalculationUtils.calculateCostFromItems(t);
-                         }, 0);
-
-  // Enhanced financial stats with additional calculations
-  const enhancedFinancialStats = {
-    ...financialStats,
-    // Ensure all required fields are present
-    totalRevenue: financialStats.totalRevenue || 0,
-    netProfit: financialStats.netProfit || 0,
-    totalSales: financialStats.totalSales || filteredTransactions.length,
-    creditSales: financialStats.creditSales || filteredTransactions.filter(t => t.isCreditTransaction).reduce((sum, t) => sum + (t.totalAmount || 0), 0),
-    nonCreditSales: financialStats.nonCreditSales || filteredTransactions.filter(t => !t.isCreditTransaction).reduce((sum, t) => sum + (t.totalAmount || 0), 0),
-    outstandingCredit: financialStats.outstandingCredit || filteredTransactions.filter(t => t.isCreditTransaction).reduce((sum, t) => sum + (t.outstandingRevenue || 0), 0),
-    totalExpenses: financialStats.totalExpenses || expenses.reduce((sum, e) => sum + CalculationUtils.safeNumber(e.amount), 0),
-    
-    // Use the enhanced COGS calculation
-    costOfGoodsSold: parseFloat(costOfGoodsSold.toFixed(2)),
-    
-    // Recalculate gross profit and profit margin with accurate COGS
-    grossProfit: financialStats.grossProfit || parseFloat((enhancedFinancialStats.totalRevenue - costOfGoodsSold).toFixed(2)),
-    profitMargin: financialStats.profitMargin || CalculationUtils.calculateProfitMargin(enhancedFinancialStats.totalRevenue, enhancedFinancialStats.grossProfit)
+      shopMap[shopId].revenue += transaction.totalAmount || 0;
+      shopMap[shopId].transactions += 1;
+      shopMap[shopId].profit += transaction.profit || 0;
+    });
+    return Object.values(shopMap)
+      .sort((a, b) => b.revenue - a.revenue);
   };
 
-  // Recalculate net profit with accurate expenses and COGS
-  if (!financialStats.netProfit) {
-    enhancedFinancialStats.netProfit = parseFloat((enhancedFinancialStats.grossProfit - enhancedFinancialStats.totalExpenses).toFixed(2));
-  }
-
-  // Business stats
-  const businessStats = {
-    totalProducts: products.length,
-    totalShops: shops.length,
-    totalCashiers: cashiers.length,
-    lowStockCount: lowStockProducts.length,
-    activeCredits: credits.filter(c => c.status !== 'paid' && CalculationUtils.safeNumber(c.balanceDue) > 0).length
+  // Helper: Calculate cashier performance
+  const calculateCashierPerformance = (transactions, cashiers) => {
+    const cashierMap = {};
+    transactions.forEach(transaction => {
+      const cashierId = transaction.cashierId || transaction.cashierId?._id;
+      if (!cashierId) return;
+      if (!cashierMap[cashierId]) {
+        const cashier = cashiers.find(c => c._id?.toString() === cashierId?.toString()) ||
+                       { name: transaction.cashierName || 'Unknown Cashier' };
+        cashierMap[cashierId] = {
+          id: cashierId,
+          name: cashier.name || 'Unknown Cashier',
+          revenue: 0,
+          transactions: 0,
+          profit: 0
+        };
+      }
+      cashierMap[cashierId].revenue += transaction.totalAmount || 0;
+      cashierMap[cashierId].transactions += 1;
+      cashierMap[cashierId].profit += transaction.profit || 0;
+    });
+    return Object.values(cashierMap)
+      .sort((a, b) => b.revenue - a.revenue);
   };
 
-  return {
-    financialStats: enhancedFinancialStats,
-    businessStats,
-    recentTransactions,
-    lowStockProducts,
-    topProducts,
-    shopPerformance,
-    cashierPerformance,
-    creditAlerts,
-    timestamp: new Date().toISOString(),
-    appliedFilters: activeFilters,
-    dataSources: {
-      transactions: filteredTransactions.length,
-      products: products.length,
-      expenses: expenses.length,
-      credits: credits.length,
-      shops: shops.length,
-      cashiers: cashiers.length
-    }
-  };
-};
+  // Default stats
+  const getDefaultStats = () => ({
+    totalRevenue: 0,
+    totalSales: 0,
+    creditSales: 0,
+    nonCreditSales: 0,
+    totalExpenses: 0,
+    netProfit: 0,
+    grossProfit: 0,
+    costOfGoodsSold: 0,
+    totalCash: 0,
+    totalMpesaBank: 0,
+    outstandingCredit: 0,
+    totalCreditGiven: 0,
+    creditSalesCount: 0,
+    nonCreditSalesCount: 0,
+    totalItemsSold: 0,
+    profitMargin: 0
+  });
 
   // Handle filter changes
   const handleFilterChange = (key, value) => {
     const newFilters = { ...filters, [key]: value };
     setFilters(newFilters);
-    
-    // Auto-refresh when filters change
     fetchDashboardData(newFilters);
   };
 
-  // Clear all filters
-  const handleClearFilters = () => {
-    const clearedFilters = {
-      dateRange: null,
-      shop: 'all',
-      autoRefresh: filters.autoRefresh // Keep auto-refresh setting
-    };
-    setFilters(clearedFilters);
-    fetchDashboardData(clearedFilters);
+  // Handle refresh
+  const handleRefreshData = () => {
+    fetchDashboardData();
+    fetchPendingVerifications();
   };
 
-  // Quick refresh function
+  // Handle quick refresh
   const quickRefresh = async () => {
     setRefreshing(true);
     try {
-      const params = {};
-      if (filters.shop && filters.shop !== 'all') {
-        params.shopId = filters.shop;
-      }
-
-      const comprehensiveData = await unifiedAPI.getCombinedTransactions(params);
-      const shopsData = await shopAPI.getAll();
-      const processedData = processDashboardData(comprehensiveData, shopsData, filters);
-      
-      setDashboardData(processedData);
-      setDataTimestamp(new Date().toISOString());
+      await fetchDashboardData();
+      await fetchPendingVerifications();
       message.success('Quick refresh completed');
     } catch (error) {
       console.error('Quick refresh failed:', error);
@@ -411,51 +427,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
     }
   };
 
-  const handleRefreshData = () => {
-    fetchDashboardData();
-  };
-
-  const handleExportData = async () => {
-    setExportLoading(true);
-    try {
-      const exportData = {
-        timestamp: dataTimestamp,
-        filters: filters,
-        ...dashboardData
-      };
-
-      const dataStr = JSON.stringify(exportData, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(dataBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `dashboard-export-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      message.success('Data exported successfully');
-    } catch (error) {
-      console.error('Export failed:', error);
-      message.error('Failed to export data');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  // Enhanced search functionality
-  const filteredRecentTransactions = useMemo(() => {
-    if (!searchTerm) return dashboardData.recentTransactions;
-    
-    return dashboardData.recentTransactions.filter(transaction =>
-      transaction.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.transactionNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.cashierName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.shop?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [dashboardData.recentTransactions, searchTerm]);
-
+  // Handle logout
   const handleLogout = () => {
     Modal.confirm({
       title: 'Confirm Logout',
@@ -463,27 +435,14 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
       okText: 'Yes, Logout',
       cancelText: 'Cancel',
       onOk: () => {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userData');
-        navigate('/login');
+        logout('manual');
+        navigate('/cashier-login');
         message.success('Logged out successfully');
       }
     });
   };
 
-  const getActiveTab = () => {
-    const path = location.pathname;
-    if (path.includes('/admin/dashboard')) return 'dashboard';
-    if (path.includes('/admin/cashiers')) return 'cashiers';
-    if (path.includes('/admin/shops')) return 'shops';
-    if (path.includes('/admin/products')) return 'products';
-    if (path.includes('/admin/inventory')) return 'inventory';
-    if (path.includes('/admin/expenses')) return 'expenses';
-    if (path.includes('/admin/transactions')) return 'transactions';
-    if (path.includes('/admin/credits')) return 'credits';
-    return 'dashboard';
-  };
-
+  // Handle view all
   const handleViewAll = (type) => {
     switch (type) {
       case 'sales':
@@ -507,17 +466,30 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
       case 'inventory':
         navigate('/admin/inventory');
         break;
+      case 'verifications':
+        navigate('/admin/verify-device');
+        break;
       default:
         break;
     }
   };
 
-  const handleViewDetails = (type, data) => {
-    setViewModalTitle(`${type.charAt(0).toUpperCase() + type.slice(1)} Details`);
-    setViewModalContent(data);
-    setViewModalVisible(true);
+  // Get active tab
+  const getActiveTab = () => {
+    const path = location.pathname;
+    if (path.includes('/admin/dashboard')) return 'dashboard';
+    if (path.includes('/admin/cashiers')) return 'cashiers';
+    if (path.includes('/admin/shops')) return 'shops';
+    if (path.includes('/admin/products')) return 'products';
+    if (path.includes('/admin/inventory')) return 'inventory';
+    if (path.includes('/admin/expenses')) return 'expenses';
+    if (path.includes('/admin/transactions')) return 'transactions';
+    if (path.includes('/admin/credits')) return 'credits';
+    if (path.includes('/admin/verify-device')) return 'verify-device';
+    return 'dashboard';
   };
 
+  // Handle menu click
   const handleMenuClick = ({ key }) => {
     switch (key) {
       case 'dashboard':
@@ -544,36 +516,15 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
       case 'credits':
         navigate('/admin/credits');
         break;
+      case 'verify-device':
+        navigate('/admin/verify-device');
+        break;
       default:
         navigate('/admin/dashboard');
     }
   };
 
-  // User dropdown menu items
-  const userMenuItems = [
-    {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: 'Profile Settings'
-    },
-    {
-      key: 'settings',
-      icon: <SettingOutlined />,
-      label: 'System Settings'
-    },
-    {
-      type: 'divider'
-    },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: 'Logout',
-      danger: true,
-      onClick: handleLogout
-    }
-  ];
-
-  // ENHANCED: Sales Columns aligned with Transaction Report
+  // Sales columns
   const salesColumns = [
     {
       title: 'Transaction ID',
@@ -609,7 +560,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
       render: (amount, record) => (
         <Space direction="vertical" size={0}>
           <Text strong style={{ fontSize: '12px', color: '#1890ff' }}>
-            {CalculationUtils.formatCurrency(amount)}
+            {formatCurrency(amount)}
           </Text>
           <Tag 
             color={record.isCreditTransaction ? 'orange' : 'green'}
@@ -626,7 +577,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
       key: 'recognizedRevenue',
       render: (_, record) => (
         <Text strong style={{ fontSize: '12px', color: '#52c41a' }}>
-          {CalculationUtils.formatCurrency(record.recognizedRevenue || record.totalAmount)}
+          {formatCurrency(record.recognizedRevenue || record.totalAmount)}
         </Text>
       ),
       width: 100
@@ -640,10 +591,10 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
           strong 
           style={{ 
             fontSize: '12px', 
-            color: CalculationUtils.getProfitColor(profit) 
+            color: profit >= 0 ? '#52c41a' : '#ff4d4f'
           }}
         >
-          {CalculationUtils.formatCurrency(profit)}
+          {formatCurrency(profit)}
         </Text>
       ),
       width: 80
@@ -654,37 +605,16 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
       key: 'shop',
       render: (text) => <Tag color="blue" style={{ fontSize: '10px' }}>{text || 'Unknown Shop'}</Tag>,
       width: 80
-    },
-    {
-      title: 'Status',
-      key: 'status',
-      render: (_, record) => (
-        <Space direction="vertical" size={0}>
-          <Tag 
-            color={record.isCreditTransaction ? 'orange' : 'green'}
-            style={{ fontSize: '9px' }}
-          >
-            {record.isCreditTransaction ? 'CREDIT' : 'COMPLETE'}
-          </Tag>
-          {record.isCreditTransaction && record.creditStatus && (
-            <Tag 
-              color={
-                record.creditStatus === 'paid' ? 'green' :
-                record.creditStatus === 'partially_paid' ? 'blue' :
-                record.creditStatus === 'overdue' ? 'red' : 'orange'
-              }
-              style={{ fontSize: '8px' }}
-            >
-              {record.creditStatus.toUpperCase()}
-            </Tag>
-          )}
-        </Space>
-      ),
-      width: 80
     }
   ];
 
-  // Low Stock Products Columns
+  // Format currency
+  const formatCurrency = (amount) => {
+    if (amount === null || amount === undefined) return 'KES 0';
+    return `KES ${amount.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  };
+
+  // Low stock columns
   const lowStockColumns = [
     {
       title: 'Product',
@@ -718,24 +648,13 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
       title: 'Min',
       dataIndex: 'minStockLevel',
       key: 'minStockLevel',
-      render: (min) => <Text style={{ fontSize: '12px' }}>{min}</Text>,
+      render: (min) => <Text style={{ fontSize: '12px' }}>{min || 5}</Text>,
       width: 50
-    },
-    {
-      title: 'Price',
-      dataIndex: 'sellingPrice',
-      key: 'sellingPrice',
-      render: (price) => (
-        <Text style={{ fontSize: '11px' }}>
-          {CalculationUtils.formatCurrency(price)}
-        </Text>
-      ),
-      width: 80
     }
   ];
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+    <Layout style={{ minHeight: '100vh', background: '#0F172A' }}>
       <Sider 
         collapsible 
         collapsed={collapsed} 
@@ -743,11 +662,15 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
         breakpoint="lg"
         collapsedWidth="80"
         style={{ 
-          background: 'linear-gradient(180deg, #2c3e50 0%, #3498db 100%)',
-          boxShadow: '2px 0 8px rgba(0,0,0,0.15)'
+          background: '#1E293B',
+          boxShadow: '2px 0 8px rgba(0,0,0,0.3)'
         }}
       >
-        <div className="logo" style={{ padding: '16px 0', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="logo" style={{ 
+          padding: '16px 0', 
+          textAlign: 'center', 
+          borderBottom: '1px solid rgba(255,255,255,0.1)' 
+        }}>
           <Title level={4} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
             {collapsed ? 'TP' : 'PAMELA'}
           </Title>
@@ -763,141 +686,156 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
             Dashboard
           </Menu.Item>
           <Menu.Item key="products" icon={<ProductOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
-            Product Management
+            Products
           </Menu.Item>
           <Menu.Item key="shops" icon={<ShopOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
-            Shop Management
+            Shops
           </Menu.Item>
           <Menu.Item key="cashiers" icon={<UserOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
-            Cashier Management
+            Cashiers
           </Menu.Item>
           <Menu.Item key="transactions" icon={<BarChartOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
-            Transactions Report
+            Transactions
           </Menu.Item>
           <Menu.Item key="expenses" icon={<DollarOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
-            Expense Management
+            Expenses
           </Menu.Item>
           <Menu.Item key="inventory" icon={<AppstoreOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
             Inventory
           </Menu.Item>
           <Menu.Item key="credits" icon={<CreditCardOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
-            Credit Management
+            Credits
+          </Menu.Item>
+          <Menu.Item key="verify-device" icon={<SecurityOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
+            Device Verify
+            {dashboardData.pendingVerifications?.length > 0 && (
+              <Badge 
+                count={dashboardData.pendingVerifications.length} 
+                style={{ marginLeft: 8, backgroundColor: '#ff4d4f' }}
+              />
+            )}
           </Menu.Item>
         </Menu>
       </Sider>
 
       <Layout className="site-layout">
         <Header className="site-layout-header" style={{ 
-          background: 'linear-gradient(90deg, #3498db 0%, #2980b9 100%)',
+          background: '#1E293B',
           padding: '0 24px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          height: 64
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <Title level={4} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
-              PAMELA - ADMIN DASHBOARD
-            </Title>
-            <Space>
-              {/* Auto-refresh toggle */}
-              <Tooltip title={filters.autoRefresh ? "Auto-refresh ON (30s)" : "Auto-refresh OFF"}>
-                <Button 
-                  type={filters.autoRefresh ? "primary" : "default"}
-                  icon={<ReloadOutlined spin={filters.autoRefresh} />}
-                  onClick={() => handleFilterChange('autoRefresh', !filters.autoRefresh)}
-                  size="small"
-                  style={{ background: filters.autoRefresh ? '#52c41a' : '#f0f0f0' }}
+          <Title level={4} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
+            PAMELA - ADMIN DASHBOARD
+          </Title>
+          <Space>
+            {/* Session Timer */}
+            {timeRemaining !== undefined && (
+              <Tooltip title={`Session expires in ${timeRemaining}s`}>
+                <Tag 
+                  color={timeRemaining <= 10 ? 'red' : timeRemaining <= 30 ? 'orange' : 'green'}
+                  style={{ margin: 0 }}
                 >
-                  Auto
-                </Button>
+                  <HistoryOutlined /> {timeRemaining}s
+                </Tag>
               </Tooltip>
-              
+            )}
+            
+            {/* Auto-refresh toggle */}
+            <Tooltip title={filters.autoRefresh ? "Auto-refresh ON (30s)" : "Auto-refresh OFF"}>
               <Button 
-                icon={<ReloadOutlined spin={refreshing} />} 
-                onClick={quickRefresh}
-                disabled={refreshing}
+                type={filters.autoRefresh ? "primary" : "default"}
+                icon={<ReloadOutlined spin={filters.autoRefresh} />}
+                onClick={() => handleFilterChange('autoRefresh', !filters.autoRefresh)}
                 size="small"
-                type="primary"
+                style={{ background: filters.autoRefresh ? '#52c41a' : '#f0f0f0' }}
               >
-                Quick Refresh
+                Auto
               </Button>
-              
-              {/* Filter button */}
-              <Button 
-                icon={<FilterOutlined />}
-                onClick={() => setFilterVisible(!filterVisible)}
-                size="small"
-                type="default"
-              >
-                Filters
+            </Tooltip>
+            
+            <Button 
+              icon={<ReloadOutlined spin={refreshing} />} 
+              onClick={quickRefresh}
+              disabled={refreshing}
+              size="small"
+              type="primary"
+            >
+              Refresh
+            </Button>
+            
+            <Button 
+              icon={<FilterOutlined />}
+              onClick={() => setFilterVisible(!filterVisible)}
+              size="small"
+            >
+              Filters
+            </Button>
+            
+            <Button 
+              icon={<ExportOutlined />} 
+              onClick={() => {
+                // Export functionality
+                message.info('Export functionality coming soon');
+              }}
+              loading={exportLoading}
+              size="small"
+            >
+              Export
+            </Button>
+            
+            <Dropdown
+              menu={{ items: userMenuItems }}
+              placement="bottomRight"
+              arrow
+            >
+              <Button type="text" style={{ color: 'white' }} size="small">
+                <Space>
+                  <UserOutlined />
+                  {user?.name || 'Admin'}
+                </Space>
               </Button>
-              
-              <Button 
-                icon={<ExportOutlined />} 
-                onClick={handleExportData}
-                loading={exportLoading}
-                size="small"
-                type="default"
-              >
-                Export
-              </Button>
-              
-              <Dropdown
-                menu={{ items: userMenuItems }}
-                placement="bottomRight"
-                arrow
-              >
-                <Button type="text" style={{ color: 'white', fontWeight: 'bold' }} size="small">
-                  <Space>
-                    <UserOutlined />
-                    Admin
-                  </Space>
-                </Button>
-              </Dropdown>
-              
-              <Button 
-                type="primary" 
-                danger 
-                icon={<LogoutOutlined />}
-                onClick={handleLogout}
-                size="small"
-              >
-                Logout
-              </Button>
-            </Space>
-          </div>
+            </Dropdown>
+            
+            <Button 
+              type="primary" 
+              danger 
+              icon={<LogoutOutlined />}
+              onClick={handleLogout}
+              size="small"
+            >
+              Logout
+            </Button>
+          </Space>
         </Header>
         
-        <Content style={{ margin: '16px', padding: 16, background: '#f5f7fa' }}>
-          {showWelcome && location.pathname === '/admin/dashboard' && (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: '60vh',
-              fontSize: '2.5rem',
-              fontWeight: 'bold',
-              color: '#3498db',
-              animation: 'fadeIn 1s',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.1)'
-            }}>
-              WELCOME  Babe to ADMIN DASHBOARD
-            </div>
-          )}
-          
-          {!showWelcome && location.pathname === '/admin/dashboard' && (
+        <Content style={{ margin: '16px', padding: 16, background: '#0F172A', minHeight: 'calc(100vh - 112px)' }}>
+          {location.pathname === '/admin/dashboard' && (
             <>
               {/* Filter Panel */}
               {filterVisible && (
                 <Card 
                   size="small" 
-                  style={{ marginBottom: 16, border: '1px solid #e8e8e8', borderRadius: '8px' }}
+                  style={{ 
+                    marginBottom: 16, 
+                    border: '1px solid #2D3748', 
+                    borderRadius: '8px',
+                    background: '#1A2332'
+                  }}
                   title={
                     <Space>
-                      <FilterOutlined style={{ color: '#3498db' }} />
-                      <Text strong>Dashboard Filters</Text>
+                      <FilterOutlined style={{ color: '#6366F1' }} />
+                      <Text strong style={{ color: 'white' }}>Dashboard Filters</Text>
                     </Space>
                   }
                   extra={
-                    <Button size="small" onClick={handleClearFilters}>
+                    <Button size="small" onClick={() => {
+                      setFilters({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
+                      fetchDashboardData({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
+                    }}>
                       Clear Filters
                     </Button>
                   }
@@ -905,7 +843,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                   <Row gutter={[12, 12]} align="middle">
                     <Col xs={24} sm={12} md={8}>
                       <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text strong>Date Range</Text>
+                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Date Range</Text>
                         <RangePicker
                           style={{ width: '100%' }}
                           value={filters.dateRange}
@@ -916,7 +854,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                     </Col>
                     <Col xs={24} sm={12} md={8}>
                       <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text strong>Shop</Text>
+                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Shop</Text>
                         <Select
                           style={{ width: '100%' }}
                           value={filters.shop}
@@ -934,7 +872,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                     </Col>
                     <Col xs={24} sm={12} md={8}>
                       <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text strong>Auto Refresh</Text>
+                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Auto Refresh</Text>
                         <div>
                           <Switch
                             checked={filters.autoRefresh}
@@ -942,7 +880,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                             checkedChildren="ON"
                             unCheckedChildren="OFF"
                           />
-                          <Text type="secondary" style={{ marginLeft: 8, fontSize: '12px' }}>
+                          <Text style={{ color: 'rgba(255,255,255,0.5)', marginLeft: 8, fontSize: '12px' }}>
                             Refresh every 30s
                           </Text>
                         </div>
@@ -955,15 +893,15 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
               {loading ? (
                 <div style={{ textAlign: 'center', padding: '50px' }}>
                   <Spin size="large" />
-                  <div style={{ marginTop: 16 }}>Loading dashboard data...</div>
+                  <div style={{ marginTop: 16, color: 'rgba(255,255,255,0.7)' }}>Loading dashboard data...</div>
                 </div>
               ) : (
                 <>
-                  {/* Data Timestamp and Active Filters */}
+                  {/* Data Timestamp */}
                   <Row style={{ marginBottom: 16 }} justify="space-between" align="middle">
                     <Col>
                       {dataTimestamp && (
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
                           Last updated: {new Date(dataTimestamp).toLocaleString()}
                           {filters.autoRefresh && (
                             <Tag color="green" style={{ marginLeft: 8 }}>Auto-refresh ON</Tag>
@@ -972,50 +910,40 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                       )}
                     </Col>
                     <Col>
-                      {(filters.dateRange || filters.shop !== 'all') && (
-                        <Space>
-                          <Text type="secondary" style={{ fontSize: '12px' }}>
-                            Active filters:
-                          </Text>
-                          {filters.dateRange && (
-                            <Tag color="blue">
-                              {filters.dateRange[0].format('YYYY-MM-DD')} - {filters.dateRange[1].format('YYYY-MM-DD')}
-                            </Tag>
-                          )}
-                          {filters.shop !== 'all' && (
-                            <Tag color="green">
-                              Shop: {shops.find(s => s._id === filters.shop)?.name || filters.shop}
-                            </Tag>
-                          )}
-                        </Space>
+                      {/* Pending Verifications Badge */}
+                      {dashboardData.pendingVerifications?.length > 0 && (
+                        <Button 
+                          type="primary" 
+                          danger
+                          icon={<SecurityOutlined />}
+                          onClick={() => navigate('/admin/verify-device')}
+                          size="small"
+                        >
+                          {dashboardData.pendingVerifications.length} Pending Verifications
+                        </Button>
                       )}
                     </Col>
                   </Row>
 
-                  {/* UPDATED: Enhanced Financial Overview with Expense and COGS */}
+                  {/* Financial Overview */}
                   <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                     <Col span={24}>
                       <Card 
                         title={
                           <Space>
-                            <LineChartOutlined style={{ color: '#3498db', fontSize: '18px' }} />
-                            <Text strong style={{ fontSize: '16px', color: '#2c3e50' }}>Financial Overview</Text>
-                            {filters.dateRange && (
-                              <Text type="secondary" style={{ fontSize: '12px', marginLeft: 8 }}>
-                                ({filters.dateRange[0].format('YYYY-MM-DD')} - {filters.dateRange[1].format('YYYY-MM-DD')})
-                              </Text>
-                            )}
+                            <LineChartOutlined style={{ color: '#6366F1', fontSize: '18px' }} />
+                            <Text strong style={{ fontSize: '16px', color: 'white' }}>Financial Overview</Text>
                           </Space>
                         }
                         style={{ 
                           borderRadius: '12px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                          border: 'none'
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
                         }}
                         bodyStyle={{ padding: '16px' }}
                       >
                         <Row gutter={[16, 16]}>
-                          {/* Core Revenue Metrics */}
                           <Col xs={24} sm={12} md={8} lg={6}>
                             <Card 
                               size="small" 
@@ -1027,11 +955,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                               bodyStyle={{ padding: '12px', textAlign: 'center' }}
                             >
                               <Statistic 
-                                title={
-                                  <Text style={{ color: 'white', fontSize: '12px' }}>
-                                    <MoneyCollectOutlined /> Total Revenue
-                                  </Text>
-                                }
+                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Revenue</Text>}
                                 value={dashboardData.financialStats.totalRevenue} 
                                 prefix="KES" 
                                 precision={0}
@@ -1051,11 +975,7 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                               bodyStyle={{ padding: '12px', textAlign: 'center' }}
                             >
                               <Statistic 
-                                title={
-                                  <Text style={{ color: 'white', fontSize: '12px' }}>
-                                    <ShoppingCartOutlined /> Total Sales
-                                  </Text>
-                                }
+                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Sales</Text>}
                                 value={dashboardData.financialStats.totalSales} 
                                 precision={0}
                                 valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
@@ -1063,7 +983,6 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                             </Card>
                           </Col>
 
-                          {/* NEW: Expense Metrics */}
                           <Col xs={24} sm={12} md={8} lg={6}>
                             <Card 
                               size="small" 
@@ -1075,12 +994,8 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                               bodyStyle={{ padding: '12px', textAlign: 'center' }}
                             >
                               <Statistic 
-                                title={
-                                  <Text style={{ color: 'white', fontSize: '12px' }}>
-                                    <DollarOutlined /> Total Expenses
-                                  </Text>
-                                }
-                                value={dashboardData.financialStats.totalExpenses} 
+                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Net Profit</Text>}
+                                value={dashboardData.financialStats.netProfit} 
                                 prefix="KES" 
                                 precision={0}
                                 valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
@@ -1099,257 +1014,11 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                               bodyStyle={{ padding: '12px', textAlign: 'center' }}
                             >
                               <Statistic 
-                                title={
-                                  <Text style={{ color: 'white', fontSize: '12px' }}>
-                                    <CalculatorOutlined /> Net Profit
-                                  </Text>
-                                }
-                                value={dashboardData.financialStats.netProfit} 
+                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Outstanding Credit</Text>}
+                                value={dashboardData.financialStats.outstandingCredit} 
                                 prefix="KES" 
                                 precision={0}
                                 valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-
-                          {/* NEW: Cost of Goods Sold */}
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={
-                                  <Text style={{ color: 'white', fontSize: '12px' }}>
-                                    <ProductOutlined /> COGS
-                                  </Text>
-                                }
-                                value={dashboardData.financialStats.costOfGoodsSold} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-
-                          {/* Credit Sales */}
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={
-                                  <Text style={{ color: '#2c3e50', fontSize: '12px' }}>
-                                    <CreditCardFilled /> Credit Sales
-                                  </Text>
-                                }
-                                value={dashboardData.financialStats.creditSales} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: '#2c3e50', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-
-                          {/* Payment Methods */}
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={
-                                  <Text style={{ color: '#2c3e50', fontSize: '12px' }}>
-                                    <BankOutlined /> Digital Payments
-                                  </Text>
-                                }
-                                value={dashboardData.financialStats.totalMpesaBank} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: '#2c3e50', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #d299c2 0%, #fef9d7 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={
-                                  <Text style={{ color: '#2c3e50', fontSize: '12px' }}>
-                                    <WalletOutlined /> Cash Payments
-                                  </Text>
-                                }
-                                value={dashboardData.financialStats.totalCash} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: '#2c3e50', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-                        </Row>
-                      </Card>
-                    </Col>
-                  </Row>
-
-                  {/* Credit Management Overview - Only show if there are credit sales */}
-                  {dashboardData.financialStats.creditSales > 0 && (
-                    <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                      <Col span={24}>
-                        <Card 
-                          title={
-                            <Space>
-                              <CreditCardOutlined style={{ color: '#e74c3c' }} />
-                              <Text strong>Credit Management</Text>
-                            </Space>
-                          }
-                          style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                        >
-                          <Row gutter={[16, 16]}>
-                            <Col xs={24} sm={12} md={8} lg={6}>
-                              <Card size="small">
-                                <Statistic 
-                                  title="Outstanding Credit" 
-                                  value={dashboardData.financialStats.outstandingCredit} 
-                                  prefix="KES" 
-                                  precision={0}
-                                  valueStyle={{ color: '#cf1322', fontSize: '14px' }}
-                                  prefix={<WarningOutlined />}
-                                />
-                              </Card>
-                            </Col>
-                            <Col xs={24} sm={12} md={8} lg={6}>
-                              <Card size="small">
-                                <Statistic 
-                                  title="Credit Sales Count" 
-                                  value={dashboardData.financialStats.creditSalesCount} 
-                                  precision={0}
-                                  valueStyle={{ color: '#fa8c16', fontSize: '14px' }}
-                                />
-                              </Card>
-                            </Col>
-                            <Col xs={24} sm={12} md={8} lg={6}>
-                              <Card size="small">
-                                <Statistic 
-                                  title="Complete Sales" 
-                                  value={dashboardData.financialStats.completeTransactionsCount} 
-                                  precision={0}
-                                  valueStyle={{ color: '#52c41a', fontSize: '14px' }}
-                                />
-                              </Card>
-                            </Col>
-                            <Col xs={24} sm={12} md={8} lg={6}>
-                              <Card size="small">
-                                <Statistic 
-                                  title="Total Credit Given" 
-                                  value={dashboardData.financialStats.totalCreditGiven} 
-                                  prefix="KES" 
-                                  precision={0}
-                                  valueStyle={{ color: '#722ed1', fontSize: '14px' }}
-                                />
-                              </Card>
-                            </Col>
-                          </Row>
-                        </Card>
-                      </Col>
-                    </Row>
-                  )}
-
-                  {/* Business Overview */}
-                  <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                    <Col span={24}>
-                      <Card 
-                        title={
-                          <Space>
-                            <AppstoreOutlined style={{ color: '#9b59b6' }} />
-                            <Text strong>Business Overview</Text>
-                          </Space>
-                        }
-                        style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                      >
-                        <Row gutter={[16, 16]}>
-                          <Col xs={24} sm={12} md={6} lg={3}>
-                            <Card size="small" style={{ background: '#ecf0f1', border: 'none' }}>
-                              <Statistic 
-                                title="Total Products" 
-                                value={dashboardData.businessStats.totalProducts} 
-                                valueStyle={{ color: '#3498db', fontSize: '14px' }}
-                                prefix={<ProductOutlined />}
-                              />
-                            </Card>
-                          </Col>
-                          <Col xs={24} sm={12} md={6} lg={3}>
-                            <Card size="small" style={{ background: '#ecf0f1', border: 'none' }}>
-                              <Statistic 
-                                title="Total Shops" 
-                                value={dashboardData.businessStats.totalShops} 
-                                valueStyle={{ color: '#2ecc71', fontSize: '14px' }}
-                                prefix={<ShopOutlined />}
-                              />
-                            </Card>
-                          </Col>
-                          <Col xs={24} sm={12} md={6} lg={3}>
-                            <Card size="small" style={{ background: '#ecf0f1', border: 'none' }}>
-                              <Statistic 
-                                title="Total Cashiers" 
-                                value={dashboardData.businessStats.totalCashiers} 
-                                valueStyle={{ color: '#9b59b6', fontSize: '14px' }}
-                                prefix={<UserOutlined />}
-                              />
-                            </Card>
-                          </Col>
-                          <Col xs={24} sm={12} md={6} lg={3}>
-                            <Card size="small" style={{ background: '#ecf0f1', border: 'none' }}>
-                              <Statistic 
-                                title="Low Stock" 
-                                value={dashboardData.businessStats.lowStockCount} 
-                                valueStyle={{ 
-                                  color: dashboardData.businessStats.lowStockCount > 0 ? '#e74c3c' : '#27ae60',
-                                  fontSize: '14px'
-                                }}
-                                prefix={<WarningOutlined />}
-                              />
-                            </Card>
-                          </Col>
-                          <Col xs={24} sm={12} md={6} lg={3}>
-                            <Card size="small" style={{ background: '#ecf0f1', border: 'none' }}>
-                              <Statistic 
-                                title="Active Credits" 
-                                value={dashboardData.businessStats.activeCredits} 
-                                valueStyle={{ color: '#f39c12', fontSize: '14px' }}
-                                prefix={<CreditCardOutlined />}
-                              />
-                            </Card>
-                          </Col>
-                          <Col xs={24} sm={12} md={6} lg={3}>
-                            <Card size="small" style={{ background: '#ecf0f1', border: 'none' }}>
-                              <Statistic 
-                                title="Items Sold" 
-                                value={dashboardData.financialStats.totalItemsSold} 
-                                valueStyle={{ color: '#1abc9c', fontSize: '14px' }}
                               />
                             </Card>
                           </Col>
@@ -1367,7 +1036,6 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                           description="Some products need to be reordered to avoid stockouts."
                           type="warning"
                           showIcon
-                          icon={<WarningOutlined />}
                           action={
                             <Button size="small" type="primary" onClick={() => handleViewAll('inventory')}>
                               View Inventory
@@ -1378,11 +1046,10 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                       )}
                       {dashboardData.financialStats.outstandingCredit > 0 && (
                         <Alert
-                          message={`Outstanding credit: ${CalculationUtils.formatCurrency(dashboardData.financialStats.outstandingCredit)}`}
+                          message={`Outstanding credit: ${formatCurrency(dashboardData.financialStats.outstandingCredit)}`}
                           description="Monitor credit collection and follow up with customers."
                           type="info"
                           showIcon
-                          icon={<CreditCardOutlined />}
                           action={
                             <Button size="small" type="primary" onClick={() => handleViewAll('credits')}>
                               View Credits
@@ -1391,16 +1058,16 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                           style={{ marginBottom: 8, borderRadius: '8px' }}
                         />
                       )}
-                      {dashboardData.creditAlerts.length > 0 && (
+                      {dashboardData.pendingVerifications?.length > 0 && (
                         <Alert
-                          message={`${dashboardData.creditAlerts.length} credits are overdue`}
-                          description="Follow up with customers for payment collection."
+                          message={`${dashboardData.pendingVerifications.length} device(s) pending verification`}
+                          description="New devices are waiting for your approval."
                           type="error"
                           showIcon
-                          icon={<CreditCardOutlined />}
+                          icon={<SecurityOutlined />}
                           action={
-                            <Button size="small" type="primary" onClick={() => handleViewAll('credits')}>
-                              View Credits
+                            <Button size="small" type="primary" onClick={() => handleViewAll('verifications')}>
+                              Review
                             </Button>
                           }
                           style={{ borderRadius: '8px' }}
@@ -1416,8 +1083,8 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                       <Card 
                         title={
                           <Space>
-                            <ShoppingCartOutlined style={{ color: '#3498db' }} />
-                            <Text strong>Recent Transactions</Text>
+                            <ShoppingCartOutlined style={{ color: '#6366F1' }} />
+                            <Text strong style={{ color: 'white' }}>Recent Transactions</Text>
                             <Badge count={dashboardData.recentTransactions.length} showZero />
                           </Space>
                         }
@@ -1440,10 +1107,15 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                             </Button>
                           </Space>
                         }
-                        style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        style={{ 
+                          borderRadius: '12px', 
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
                       >
                         <Table 
-                          dataSource={filteredRecentTransactions} 
+                          dataSource={dashboardData.recentTransactions} 
                           columns={salesColumns} 
                           pagination={{ 
                             pageSize: 5,
@@ -1463,12 +1135,12 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                       <Card 
                         title={
                           <Space>
-                            <WarningOutlined style={{ color: '#e74c3c' }} />
-                            <Text strong>Low Stock Products</Text>
+                            <WarningOutlined style={{ color: '#ff4d4f' }} />
+                            <Text strong style={{ color: 'white' }}>Low Stock Products</Text>
                             <Badge 
                               count={dashboardData.lowStockProducts.length} 
                               showZero 
-                              style={{ backgroundColor: '#e74c3c' }} 
+                              style={{ backgroundColor: '#ff4d4f' }} 
                             />
                           </Space>
                         }
@@ -1480,7 +1152,12 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                             Manage
                           </Button>
                         }
-                        style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        style={{ 
+                          borderRadius: '12px', 
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
                       >
                         <Table 
                           dataSource={dashboardData.lowStockProducts} 
@@ -1498,42 +1175,53 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                       <Card 
                         title={
                           <Space>
-                            <ProductOutlined style={{ color: '#2ecc71' }} />
-                            <Text strong>Top Selling Products</Text>
+                            <ProductOutlined style={{ color: '#52c41a' }} />
+                            <Text strong style={{ color: 'white' }}>Top Selling Products</Text>
                           </Space>
                         }
-                        style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        style={{ 
+                          borderRadius: '12px', 
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
                       >
                         <List
                           dataSource={dashboardData.topProducts}
                           renderItem={(item, index) => (
-                            <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #f0f0f0' }}>
+                            <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
                               <List.Item.Meta
                                 avatar={
                                   <Avatar 
                                     size="small" 
                                     style={{ 
-                                      backgroundColor: index < 3 ? '#3498db' : '#95a5a6',
+                                      backgroundColor: index < 3 ? '#6366F1' : '#4A5568',
                                       fontSize: '10px',
-                                      fontWeight: 'bold'
+                                      fontWeight: 'bold',
+                                      color: 'white'
                                     }}
                                   >
                                     {index + 1}
                                   </Avatar>
                                 }
                                 title={
-                                  <Text style={{ fontSize: '13px', fontWeight: 'bold' }}>{item.name}</Text>
+                                  <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
+                                    {item.name}
+                                  </Text>
                                 }
                                 description={
                                   <Space direction="vertical" size={0}>
-                                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
                                       Sold: {item.totalSold} units
                                     </Text>
-                                    <Text type="secondary" style={{ fontSize: '11px' }}>
-                                      Revenue: {CalculationUtils.formatCurrency(item.totalRevenue)}
+                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                                      Revenue: {formatCurrency(item.totalRevenue)}
                                     </Text>
-                                    <Text strong style={{ fontSize: '11px', color: CalculationUtils.getProfitColor(item.totalProfit) }}>
-                                      Profit: {CalculationUtils.formatCurrency(item.totalProfit)}
+                                    <Text strong style={{ 
+                                      fontSize: '11px', 
+                                      color: item.totalProfit >= 0 ? '#52c41a' : '#ff4d4f'
+                                    }}>
+                                      Profit: {formatCurrency(item.totalProfit)}
                                     </Text>
                                   </Space>
                                 }
@@ -1551,41 +1239,52 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                         title={
                           <Space>
                             <ShopOutlined style={{ color: '#9b59b6' }} />
-                            <Text strong>Shop Performance</Text>
+                            <Text strong style={{ color: 'white' }}>Shop Performance</Text>
                           </Space>
                         }
-                        style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        style={{ 
+                          borderRadius: '12px', 
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
                       >
                         <List
                           dataSource={dashboardData.shopPerformance}
                           renderItem={(item, index) => (
-                            <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #f0f0f0' }}>
+                            <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
                               <List.Item.Meta
                                 avatar={
                                   <Avatar 
                                     size="small" 
                                     style={{ 
-                                      backgroundColor: index < 3 ? '#9b59b6' : '#bdc3c7',
+                                      backgroundColor: index < 3 ? '#9b59b6' : '#4A5568',
                                       fontSize: '10px',
-                                      fontWeight: 'bold'
+                                      fontWeight: 'bold',
+                                      color: 'white'
                                     }}
                                   >
                                     {item.name?.charAt(0)?.toUpperCase() || 'S'}
                                   </Avatar>
                                 }
                                 title={
-                                  <Text style={{ fontSize: '13px', fontWeight: 'bold' }}>{item.name}</Text>
+                                  <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
+                                    {item.name}
+                                  </Text>
                                 }
                                 description={
                                   <Space direction="vertical" size={0}>
-                                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
                                       Transactions: {item.transactions}
                                     </Text>
-                                    <Text type="secondary" style={{ fontSize: '11px' }}>
-                                      Revenue: {CalculationUtils.formatCurrency(item.revenue)}
+                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                                      Revenue: {formatCurrency(item.revenue)}
                                     </Text>
-                                    <Text strong style={{ fontSize: '11px', color: CalculationUtils.getProfitColor(item.profit) }}>
-                                      Profit: {CalculationUtils.formatCurrency(item.profit)}
+                                    <Text strong style={{ 
+                                      fontSize: '11px', 
+                                      color: item.profit >= 0 ? '#52c41a' : '#ff4d4f'
+                                    }}>
+                                      Profit: {formatCurrency(item.profit)}
                                     </Text>
                                   </Space>
                                 }
@@ -1597,146 +1296,12 @@ const processDashboardData = (comprehensiveData, shops, activeFilters) => {
                       </Card>
                     </Col>
                   </Row>
-
-                  {/* Quick Actions */}
-                  <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-                    <Col span={24}>
-                      <Card 
-                        title="Quick Actions" 
-                        style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                      >
-                        <Space wrap>
-                          <Button 
-                            type="primary" 
-                            icon={<BarChartOutlined />}
-                            onClick={() => handleViewAll('sales')}
-                            size="middle"
-                          >
-                            View Full Reports
-                          </Button>
-                          <Button 
-                            icon={<ProductOutlined />}
-                            onClick={() => handleViewAll('products')}
-                            size="middle"
-                          >
-                            Manage Products
-                          </Button>
-                          <Button 
-                            icon={<CreditCardOutlined />}
-                            onClick={() => handleViewAll('credits')}
-                            size="middle"
-                          >
-                            Manage Credits
-                          </Button>
-                          <Button 
-                            icon={<AppstoreOutlined />}
-                            onClick={() => handleViewAll('inventory')}
-                            size="middle"
-                          >
-                            Check Inventory
-                          </Button>
-                          <Button 
-                            icon={<DollarOutlined />}
-                            onClick={() => handleViewAll('expenses')}
-                            size="middle"
-                          >
-                            Manage Expenses
-                          </Button>
-                          <Button 
-                            icon={<ReloadOutlined />}
-                            onClick={handleRefreshData}
-                            size="middle"
-                          >
-                            Full Refresh
-                          </Button>
-                        </Space>
-                      </Card>
-                    </Col>
-                  </Row>
                 </>
               )}
             </>
           )}
           
           {location.pathname !== '/admin/dashboard' && <Outlet />}
-
-          {/* View Details Modal */}
-          <Modal
-            title={viewModalTitle}
-            open={viewModalVisible}
-            onCancel={() => setViewModalVisible(false)}
-            footer={[
-              <Button key="close" onClick={() => setViewModalVisible(false)}>
-                Close
-              </Button>
-            ]}
-            width={700}
-            style={{ top: 20 }}
-          >
-            {viewModalContent && (
-              <Descriptions bordered column={2} size="small">
-                {Object.entries(viewModalContent).map(([key, value]) => {
-                  if (key === '_id' || key === '__v') return null;
-                  
-                  if (key === 'items' && Array.isArray(value)) {
-                    return (
-                      <Descriptions.Item label="Items" span={2} key={key}>
-                        <List
-                          size="small"
-                          dataSource={value.slice(0, 10)}
-                          renderItem={item => (
-                            <List.Item>
-                              {item.productName} - {item.quantity} x {CalculationUtils.formatCurrency(item.unitPrice)} = {CalculationUtils.formatCurrency(item.totalPrice)}
-                              {item.buyingPrice && (
-                                <Text type="secondary" style={{ marginLeft: 8 }}>
-                                  (COGS: {CalculationUtils.formatCurrency(item.buyingPrice)} each)
-                                </Text>
-                              )}
-                            </List.Item>
-                          )}
-                        />
-                        {value.length > 10 && (
-                          <Text type="secondary">
-                            ... and {value.length - 10} more items
-                          </Text>
-                        )}
-                      </Descriptions.Item>
-                    );
-                  }
-                  
-                  if (typeof value === 'object' && value !== null) {
-                    return (
-                      <Descriptions.Item label={key} span={2} key={key}>
-                        <Text code>{JSON.stringify(value, null, 2)}</Text>
-                      </Descriptions.Item>
-                    );
-                  }
-                  
-                  if (typeof value === 'number' && key.toLowerCase().includes('amount')) {
-                    return (
-                      <Descriptions.Item label={key} key={key}>
-                        <Text strong>{CalculationUtils.formatCurrency(value)}</Text>
-                      </Descriptions.Item>
-                    );
-                  }
-                  
-                  if (typeof value === 'string' && key.toLowerCase().includes('date')) {
-                    return (
-                      <Descriptions.Item label={key} key={key}>
-                        {new Date(value).toLocaleString()}
-                      </Descriptions.Item>
-                    );
-                  }
-                  
-                  return (
-                    <Descriptions.Item label={key} key={key}>
-                      {String(value)}
-                    </Descriptions.Item>
-                  );
-                })}
-              </Descriptions>
-            )}
-          </Modal>
         </Content>
       </Layout>
     </Layout>
