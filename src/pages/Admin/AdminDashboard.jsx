@@ -1,4 +1,4 @@
-// src/pages/Admin/AdminDashboard.jsx - COMPLETE FIXED VERSION
+// src/pages/Admin/AdminDashboard.jsx - FIXED VERSION
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
@@ -47,6 +47,7 @@ import {
   shopAPI, 
   authAPI 
 } from '../../services/api';
+import { CalculationUtils } from '../../utils/calculationUtils';
 import './AdminDashboard.css';
 
 const { Header, Sider, Content } = Layout;
@@ -66,7 +67,7 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState({
-    financialStats: getDefaultStats(),
+    financialStats: CalculationUtils.getDefaultStatsWithCreditManagement(),
     businessStats: {
       totalProducts: 0,
       totalShops: 0,
@@ -105,7 +106,7 @@ const AdminDashboard = () => {
     },
     {
       key: 'devices',
-      icon: <SafetyOutlined />,  // FIXED: Changed from SecurityOutlined
+      icon: <SafetyOutlined />,
       label: 'Manage Devices',
       onClick: () => navigate('/admin/verify-device')
     },
@@ -242,7 +243,7 @@ const AdminDashboard = () => {
   // Process dashboard data
   const processDashboardData = (comprehensiveData, shops, activeFilters) => {
     const transactions = comprehensiveData.salesWithProfit || [];
-    const financialStats = comprehensiveData.financialStats || getDefaultStats();
+    const financialStats = comprehensiveData.financialStats || CalculationUtils.getDefaultStatsWithCreditManagement();
     const products = comprehensiveData.products || [];
     const expenses = comprehensiveData.expenses || [];
     const credits = comprehensiveData.credits || [];
@@ -256,9 +257,9 @@ const AdminDashboard = () => {
       (p.currentStock || 0) <= (p.minStockLevel || 5)
     ).slice(0, 5);
 
-    const topProducts = calculateTopProducts(transactions, 5);
-    const shopPerformance = calculateShopPerformance(transactions, shops);
-    const cashierPerformance = calculateCashierPerformance(transactions, cashiers);
+    const topProducts = CalculationUtils.calculateTopProducts(transactions, 5);
+    const shopPerformance = CalculationUtils.calculateShopPerformance(transactions, shops);
+    const cashierPerformance = CalculationUtils.calculateCashierPerformance(transactions, cashiers);
 
     const creditAlerts = credits
       .filter(credit => {
@@ -290,104 +291,8 @@ const AdminDashboard = () => {
     };
   };
 
-  // Helper: Calculate top products
-  const calculateTopProducts = (transactions, limit = 5) => {
-    const productMap = {};
-    transactions.forEach(transaction => {
-      transaction.items?.forEach(item => {
-        const productId = item.productId?.toString() || item.productName;
-        const productName = item.productName || 'Unknown Product';
-        if (!productMap[productId]) {
-          productMap[productId] = {
-            id: productId,
-            name: productName,
-            totalSold: 0,
-            totalRevenue: 0,
-            totalProfit: 0
-          };
-        }
-        const quantity = item.quantity || 1;
-        const revenue = item.totalPrice || (item.price * quantity);
-        const cost = (item.buyingPrice || 0) * quantity;
-        productMap[productId].totalSold += quantity;
-        productMap[productId].totalRevenue += revenue;
-        productMap[productId].totalProfit += (revenue - cost);
-      });
-    });
-    return Object.values(productMap)
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .slice(0, limit);
-  };
-
-  // Helper: Calculate shop performance
-  const calculateShopPerformance = (transactions, shops) => {
-    const shopMap = {};
-    transactions.forEach(transaction => {
-      const shopId = transaction.shop || transaction.shopId;
-      if (!shopId) return;
-      if (!shopMap[shopId]) {
-        const shop = shops.find(s => s._id?.toString() === shopId?.toString()) ||
-                    { name: 'Unknown Shop' };
-        shopMap[shopId] = {
-          id: shopId,
-          name: shop.name || 'Unknown Shop',
-          revenue: 0,
-          transactions: 0,
-          profit: 0
-        };
-      }
-      shopMap[shopId].revenue += transaction.totalAmount || 0;
-      shopMap[shopId].transactions += 1;
-      shopMap[shopId].profit += transaction.profit || 0;
-    });
-    return Object.values(shopMap)
-      .sort((a, b) => b.revenue - a.revenue);
-  };
-
-  // Helper: Calculate cashier performance
-  const calculateCashierPerformance = (transactions, cashiers) => {
-    const cashierMap = {};
-    transactions.forEach(transaction => {
-      const cashierId = transaction.cashierId || transaction.cashierId?._id;
-      if (!cashierId) return;
-      if (!cashierMap[cashierId]) {
-        const cashier = cashiers.find(c => c._id?.toString() === cashierId?.toString()) ||
-                       { name: transaction.cashierName || 'Unknown Cashier' };
-        cashierMap[cashierId] = {
-          id: cashierId,
-          name: cashier.name || 'Unknown Cashier',
-          revenue: 0,
-          transactions: 0,
-          profit: 0
-        };
-      }
-      cashierMap[cashierId].revenue += transaction.totalAmount || 0;
-      cashierMap[cashierId].transactions += 1;
-      cashierMap[cashierId].profit += transaction.profit || 0;
-    });
-    return Object.values(cashierMap)
-      .sort((a, b) => b.revenue - a.revenue);
-  };
-
-  // Default stats
-  const getDefaultStats = () => ({
-    totalRevenue: 0,
-    totalSales: 0,
-    creditSales: 0,
-    nonCreditSales: 0,
-    totalExpenses: 0,
-    netProfit: 0,
-    grossProfit: 0,
-    costOfGoodsSold: 0,
-    totalCash: 0,
-    totalMpesaBank: 0,
-    outstandingCredit: 0,
-    totalCreditGiven: 0,
-    creditSalesCount: 0,
-    nonCreditSalesCount: 0,
-    totalItemsSold: 0,
-    profitMargin: 0
-  });
+  // Default stats - using CalculationUtils
+  const getDefaultStats = () => CalculationUtils.getDefaultStatsWithCreditManagement();
 
   // Handle filter changes
   const handleFilterChange = (key, value) => {

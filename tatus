@@ -1,0 +1,3 @@
+[33m4541648[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m feat: Implement comprehensive security system SECURITY FEATURES ADDED: - SecurityContext: Centralized session and device management - ProtectedRoute: Route protection with device verification - SessionStatus: Real-time session timer (60s countdown) - InactivityMonitor: Auto-logout after 1 minute inactivity - Device Verification: New device approval workflow
+[33mb15e61b[m Update CashierDashboard.jsx
+[33m1f9c19c[m Initial commit: POS frontend
