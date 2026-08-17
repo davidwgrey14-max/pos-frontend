@@ -1,4 +1,4 @@
-// src/pages/Admin/AdminDashboard.jsx - UPDATED WITH SECURITY FEATURES
+// src/pages/Admin/AdminDashboard.jsx - COMPLETE FIXED VERSION
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
@@ -35,9 +35,10 @@ import {
   BankOutlined,
   CreditCardFilled,
   WalletOutlined,
-  SecurityOutlined,
+  SafetyOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  LockOutlined
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
@@ -104,7 +105,7 @@ const AdminDashboard = () => {
     },
     {
       key: 'devices',
-      icon: <SecurityOutlined />,
+      icon: <SafetyOutlined />,  // FIXED: Changed from SecurityOutlined
       label: 'Manage Devices',
       onClick: () => navigate('/admin/verify-device')
     },
@@ -205,11 +206,9 @@ const AdminDashboard = () => {
       setLoading(true);
       setRefreshing(true);
       
-      // Fetch shops
       const shopsData = await shopAPI.getAll();
       setShops(shopsData);
 
-      // Build params
       const params = {};
       if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
         params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
@@ -219,7 +218,6 @@ const AdminDashboard = () => {
         params.shopId = activeFilters.shop;
       }
 
-      // Fetch combined data
       const comprehensiveData = await unifiedAPI.getCombinedTransactions(params);
       
       const processedData = processDashboardData(comprehensiveData, shopsData, activeFilters);
@@ -250,26 +248,18 @@ const AdminDashboard = () => {
     const credits = comprehensiveData.credits || [];
     const cashiers = comprehensiveData.cashiers || [];
 
-    // Recent transactions
     const recentTransactions = transactions
       .sort((a, b) => new Date(b.saleDate || b.createdAt) - new Date(a.saleDate || a.createdAt))
       .slice(0, 10);
 
-    // Low stock products
     const lowStockProducts = products.filter(p => 
       (p.currentStock || 0) <= (p.minStockLevel || 5)
     ).slice(0, 5);
 
-    // Top products
     const topProducts = calculateTopProducts(transactions, 5);
-
-    // Shop performance
     const shopPerformance = calculateShopPerformance(transactions, shops);
-
-    // Cashier performance
     const cashierPerformance = calculateCashierPerformance(transactions, cashiers);
 
-    // Credit alerts
     const creditAlerts = credits
       .filter(credit => {
         const isOverdue = credit.dueDate && new Date(credit.dueDate) < new Date() && 
@@ -706,7 +696,7 @@ const AdminDashboard = () => {
           <Menu.Item key="credits" icon={<CreditCardOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
             Credits
           </Menu.Item>
-          <Menu.Item key="verify-device" icon={<SecurityOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
+          <Menu.Item key="verify-device" icon={<SafetyOutlined />} style={{ margin: '4px 8px', borderRadius: '6px' }}>
             Device Verify
             {dashboardData.pendingVerifications?.length > 0 && (
               <Badge 
@@ -778,7 +768,6 @@ const AdminDashboard = () => {
             <Button 
               icon={<ExportOutlined />} 
               onClick={() => {
-                // Export functionality
                 message.info('Export functionality coming soon');
               }}
               loading={exportLoading}
@@ -910,12 +899,11 @@ const AdminDashboard = () => {
                       )}
                     </Col>
                     <Col>
-                      {/* Pending Verifications Badge */}
                       {dashboardData.pendingVerifications?.length > 0 && (
                         <Button 
                           type="primary" 
                           danger
-                          icon={<SecurityOutlined />}
+                          icon={<SafetyOutlined />}
                           onClick={() => navigate('/admin/verify-device')}
                           size="small"
                         >
@@ -1064,7 +1052,7 @@ const AdminDashboard = () => {
                           description="New devices are waiting for your approval."
                           type="error"
                           showIcon
-                          icon={<SecurityOutlined />}
+                          icon={<SafetyOutlined />}
                           action={
                             <Button size="small" type="primary" onClick={() => handleViewAll('verifications')}>
                               Review
