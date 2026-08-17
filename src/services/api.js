@@ -1,4 +1,4 @@
-// src/services/api.js - UPDATED WITH SECURITY FEATURES
+// src/services/api.js - COMPLETE WITH SECURITY FEATURES
 import axios from 'axios';
 
 // Enhanced Configuration
@@ -776,6 +776,102 @@ const getDefaultStats = () => ({
   creditCollectionRate: 0
 });
 
+// ==================== CREDIT API ====================
+
+export const creditAPI = {
+  getAll: async (params = {}) => {
+    try {
+      console.log('📋 Fetching credits...');
+      
+      const response = await api.get('/credits', { params });
+      return response.data?.data || response.data || [];
+    } catch (error) {
+      console.error('❌ Error fetching credits:', error);
+      return [];
+    }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/credits/${id}`);
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error fetching credit:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  create: async (data) => {
+    try {
+      const response = await api.post('/credits', data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error creating credit:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  update: async (id, data) => {
+    try {
+      const response = await api.put(`/credits/${id}`, data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error updating credit:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  delete: async (id) => {
+    try {
+      const response = await api.delete(`/credits/${id}`);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error deleting credit:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  getStats: async (params = {}) => {
+    try {
+      const response = await api.get('/credits/stats', { params });
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error fetching credit stats:', error);
+      return {
+        totalCredits: 0,
+        totalAmount: 0,
+        totalPaid: 0,
+        totalOutstanding: 0,
+        overdueCount: 0
+      };
+    }
+  },
+
+  recordPayment: async (id, paymentData) => {
+    try {
+      const response = await api.post(`/credits/${id}/payments`, paymentData);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('❌ Error recording payment:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  getPaymentHistory: async (id) => {
+    try {
+      const response = await api.get(`/credits/${id}/payments`);
+      return response.data?.data || response.data || [];
+    } catch (error) {
+      console.error('❌ Error fetching payment history:', error);
+      return [];
+    }
+  }
+};
+
 // ==================== SHOP API ====================
 
 export const shopAPI = {
@@ -787,17 +883,333 @@ export const shopAPI = {
       console.error('Error fetching shops:', error);
       return [];
     }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/shops/${id}`);
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error fetching shop:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  create: async (data) => {
+    try {
+      const response = await api.post('/shops', data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error creating shop:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  update: async (id, data) => {
+    try {
+      const response = await api.put(`/shops/${id}`, data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error updating shop:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  delete: async (id) => {
+    try {
+      const response = await api.delete(`/shops/${id}`);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error deleting shop:', error);
+      throw new Error(handleApiError(error));
+    }
   }
 };
 
-// Export main API service
+// ==================== PRODUCT API ====================
+
+export const productAPI = {
+  getAll: async (params = {}) => {
+    try {
+      const response = await fastApi.get('/products', { params });
+      return response.data?.data || response.data || [];
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      return [];
+    }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/products/${id}`);
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error fetching product:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  create: async (data) => {
+    try {
+      const response = await api.post('/products', data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error creating product:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  update: async (id, data) => {
+    try {
+      const response = await api.put(`/products/${id}`, data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error updating product:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  delete: async (id) => {
+    try {
+      const response = await api.delete(`/products/${id}`);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      throw new Error(handleApiError(error));
+    }
+  }
+};
+
+// ==================== CASHIER API ====================
+
+export const cashierAPI = {
+  getAll: async (params = {}) => {
+    try {
+      const response = await fastApi.get('/cashiers', { params });
+      return response.data?.data || response.data || [];
+    } catch (error) {
+      console.error('Error fetching cashiers:', error);
+      return [];
+    }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/cashiers/${id}`);
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error fetching cashier:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  create: async (data) => {
+    try {
+      const response = await api.post('/cashiers', data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error creating cashier:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  update: async (id, data) => {
+    try {
+      const response = await api.put(`/cashiers/${id}`, data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error updating cashier:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  delete: async (id) => {
+    try {
+      const response = await api.delete(`/cashiers/${id}`);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error deleting cashier:', error);
+      throw new Error(handleApiError(error));
+    }
+  }
+};
+
+// ==================== EXPENSE API ====================
+
+export const expenseAPI = {
+  getAll: async (params = {}) => {
+    try {
+      const response = await fastApi.get('/expenses', { params });
+      return response.data?.data || response.data || [];
+    } catch (error) {
+      console.error('Error fetching expenses:', error);
+      return [];
+    }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/expenses/${id}`);
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error fetching expense:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  create: async (data) => {
+    try {
+      const response = await api.post('/expenses', data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error creating expense:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  update: async (id, data) => {
+    try {
+      const response = await api.put(`/expenses/${id}`, data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error updating expense:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  delete: async (id) => {
+    try {
+      const response = await api.delete(`/expenses/${id}`);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  getStats: async (params = {}) => {
+    try {
+      const response = await api.get('/expenses/stats', { params });
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error fetching expense stats:', error);
+      return {
+        totalExpenses: 0,
+        totalAmount: 0,
+        averageExpense: 0,
+        minExpense: 0,
+        maxExpense: 0,
+        expensesCount: 0
+      };
+    }
+  }
+};
+
+// ==================== TRANSACTION API ====================
+
+export const transactionAPI = {
+  getAll: async (params = {}) => {
+    try {
+      const response = await fastApi.get('/transactions', { params });
+      return response.data?.data || response.data || [];
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      return [];
+    }
+  },
+
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/transactions/${id}`);
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error fetching transaction:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  create: async (data) => {
+    try {
+      const response = await api.post('/transactions', data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error creating transaction:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  update: async (id, data) => {
+    try {
+      const response = await api.put(`/transactions/${id}`, data);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  delete: async (id) => {
+    try {
+      const response = await api.delete(`/transactions/${id}`);
+      cache.clearAll();
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      throw new Error(handleApiError(error));
+    }
+  },
+
+  getMetrics: async (params = {}) => {
+    try {
+      const response = await api.get('/transactions/metrics', { params });
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error fetching transaction metrics:', error);
+      return getDefaultStats();
+    }
+  }
+};
+
+// ==================== EXPORT MAIN API SERVICE ====================
+
 const apiService = {
   auth: authAPI,
   unified: unifiedAPI,
   shop: shopAPI,
+  product: productAPI,
+  cashier: cashierAPI,
+  expense: expenseAPI,
+  transaction: transactionAPI,
+  credit: creditAPI,
   cache,
   clearCache: () => cache.clearAll(),
   handleApiError
 };
 
 export default apiService;
+
+// Export individual APIs for direct import
+export { 
+  authAPI, 
+  unifiedAPI, 
+  shopAPI, 
+  productAPI, 
+  cashierAPI, 
+  expenseAPI, 
+  transactionAPI, 
+  creditAPI 
+};
