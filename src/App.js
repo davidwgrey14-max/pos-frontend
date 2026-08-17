@@ -1,4 +1,4 @@
-// src/App.js - UPDATED WITH SECURITY FEATURES (FIXED)
+// src/App.js - FIXED IMPORT PATHS
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { message } from 'antd';
@@ -11,7 +11,7 @@ import SessionStatus from './components/SessionStatus';
 // Import page components
 import Home from './pages/Home';
 import AdminLogin from './pages/Auth/AdminLogin';
-import CashierLogin from './pages/Cashier/CashierLogin';
+import CashierLogin from './pages/Auth/CashierLogin';  // FIXED: Correct path
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import CashierDashboard from './pages/Cashier/CashierDashboard';
 
@@ -34,7 +34,7 @@ import Receipt from './pages/Cashier/Receipt';
 // ==================== PROTECTED ROUTE WRAPPER ====================
 
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
-  const { isAuthenticated, user, deviceVerified, pendingVerification } = useSecurity();
+  const { isAuthenticated, user, pendingVerification } = useSecurity();
   const location = useLocation();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
