@@ -1,4 +1,4 @@
-// src/services/api.js - COMPLETE WITH SECURITY FEATURES
+// src/services/api.js - COMPLETE WITH SECURITY FEATURES (CLEAN VERSION)
 import axios from 'axios';
 
 // Enhanced Configuration
@@ -1184,9 +1184,6 @@ export const transactionAPI = {
   }
 };
 
-
-// ==================== EXPORT MAIN API SERVICE ====================
-
 // ==================== EXPORT MAIN API SERVICE ====================
 
 const apiService = {
@@ -1204,13 +1201,3 @@ const apiService = {
 };
 
 export default apiService;
-
-// Export individual APIs for direct import 
-// (authAPI, unifiedAPI, and shopAPI are already exported at top)
-export { 
-  productAPI, 
-  cashierAPI, 
-  expenseAPI, 
-  transactionAPI, 
-  creditAPI 
-};
