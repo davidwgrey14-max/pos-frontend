@@ -1,4 +1,4 @@
-// src/App.js - UPDATED WITH SECURITY FEATURES
+// src/App.js - UPDATED WITH SECURITY FEATURES (FIXED)
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { message } from 'antd';
@@ -118,8 +118,8 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
   }
 
   // Check device verification
-  const deviceVerified = localStorage.getItem('deviceVerified') === 'true';
-  if (!deviceVerified) {
+  const isDeviceVerified = localStorage.getItem('deviceVerified') === 'true';
+  if (!isDeviceVerified) {
     return (
       <div style={{ 
         display: 'flex', 
@@ -160,6 +160,7 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
               localStorage.removeItem('authToken');
               localStorage.removeItem('cashierToken');
               localStorage.removeItem('adminToken');
+              localStorage.removeItem('deviceVerified');
               window.location.href = '/cashier-login';
             }}
             style={{
