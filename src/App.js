@@ -22,7 +22,10 @@ import DeviceVerification from './pages/Admin/DeviceVerification';
 import ShopSelection from './pages/Cashier/ShopSelection';
 import Cart from './pages/Cashier/Cart';
 import Receipt from './pages/Cashier/Receipt';
+// IMPORT Manager Dashboard - This is the fix
 import ManagerDashboard from './pages/Manager/ManagerDashboard';
+import ManagerDashboardHome from './pages/Manager/ManagerDashboardHome';
+import ManagerLogin from './pages/Manager/ManagerLogin';
 
 const ProtectedRoute = ({ children, requireAdmin = false, requireManager = false }) => {
   const { isAuthenticated, user, pendingVerification } = useSecurity();
@@ -130,8 +133,10 @@ const App = () => {
           <Route path="/" element={<Home />} />
           <Route path="/admin-login" element={<AdminLogin />} />
           <Route path="/cashier-login" element={<CashierLogin />} />
+          <Route path="/manager-login" element={<ManagerLogin />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/cashier/login" element={<CashierLogin />} />
+          <Route path="/manager/login" element={<ManagerLogin />} />
           <Route path="/cashier/shops" element={<ShopSelection />} />
           
           {/* Admin Routes - Protected */}

@@ -1,4 +1,4 @@
-// src/pages/Auth/AdminLogin.jsx - Enhanced with device verification
+// src/pages/Auth/AdminLogin.jsx - FIXED
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
@@ -242,30 +242,13 @@ const AdminLogin = () => {
       if (response.success) {
         setMessage('Login successful! Redirecting...');
         
+        // FIXED: Single declaration of userData - no duplicate
         const userData = response.user || {
           email: formData.email,
           role: 'admin',
           name: 'System Administrator'
         };
-// After successful verification:
-const userData = response.user || {
-  email: formData.email,
-  role: 'admin',
-  name: 'System Administrator'
-};
 
-// Handle manager role
-if (userData.role === 'manager') {
-  login(userData, response.token, response.sessionId);
-  setTimeout(() => {
-    navigate('/manager/dashboard', { replace: true });
-  }, 500);
-} else {
-  login(userData, response.token, response.sessionId);
-  setTimeout(() => {
-    navigate('/admin/dashboard', { replace: true });
-  }, 500);
-}
         // Store login info
         login(userData, response.token, response.sessionId);
         

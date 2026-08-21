@@ -1,4 +1,4 @@
-// src/pages/Cashier/CashierDashboard.jsx - COMPLETE UPFRONT PAYMENT SUPPORT
+// src/pages/Cashier/CashierDashboard.jsx - COMPLETE UPFRONT PAYMENT SUPPORT (FIXED)
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Layout, Card, Row, Col, Statistic, Typography, Tag,
@@ -362,7 +362,7 @@ const CashierDashboard = () => {
         if (transaction.paymentMethod === 'credit') {
           return {
             ...transaction,
-            // The amount   shown should be the recognized revenue (amount paid upfront)
+            // The amount shown should be the recognized revenue (amount paid upfront)
             displayAmount: transaction.recognizedRevenue || transaction.amountPaid || 0,
             // The credit balance should be the outstanding balance only
             creditBalance: transaction.outstandingRevenue || transaction.balanceDue || 0
@@ -433,25 +433,15 @@ const CashierDashboard = () => {
     }
   };
 
-  // Enhanced cart functions with better user feedback
+  // FIXED addToCart function (no duplicate code)
   const addToCart = (product, quantity = 1, customPrice = null) => {
     if (!product._id) {
       console.error('❌ Cannot add product to cart: product ID is missing', product);
       message.error('Cannot add product to cart. Product data is invalid.');
       return;
     }
-const currentStock = product.currentStock || 0;
-  
-  if (currentStock <= 0) {
-    message.warning(`${product.name} is out of stock.`);
-    return;
-  }
 
-  if (quantity > currentStock) {
-    message.warning(`Only ${currentStock} items available in stock for ${product.name}.`);
-    quantity = currentStock;
-  }
-
+    // FIXED: Single declaration
     const currentStock = product.currentStock || 0;
     
     if (currentStock <= 0) {
@@ -1323,8 +1313,6 @@ const currentStock = product.currentStock || 0;
                   upfrontPaymentMethod: 'cash'
                 }}
               >
-                
-                
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
@@ -1400,8 +1388,6 @@ const currentStock = product.currentStock || 0;
                   title="Upfront Payment (Optional)"
                   style={{ marginBottom: '16px', borderColor: COLOR_SCHEME.info }}
                 >
-                 
-                  
                   <Row gutter={16}>
                     <Col span={12}>
                       <Form.Item
@@ -2048,48 +2034,25 @@ const currentStock = product.currentStock || 0;
                   onRemoveItem={removeFromCart}
                   onClearCart={clearCart}
                   onCheckout={handlePaymentMethodSelect}
+                                    onCheckout={handlePaymentMethodSelect}
                   loading={posLoading.checkout}
                   totals={totals}
-                  shop={selectedShop}
+                  formatCurrency={CashierCalculationUtils.formatCurrency}
                 />
               </Col>
             </Row>
-
-            {/* Floating Action Button */}
-            <FloatButton.Group
-              shape="circle"
-              style={{ right: 24 }}
-              icon={<ShoppingOutlined />}
-              trigger="hover"
-            >
-              <FloatButton
-                icon={<ReloadOutlined />}
-                tooltip="Refresh Products"
-                onClick={() => fetchProducts(true)}
-              />
-              <FloatButton
-                icon={<QrcodeOutlined />}
-                tooltip="Barcode Scan"
-                onClick={() => setScanMode(true)}
-              />
-              <FloatButton
-                icon={<ClearOutlined />}
-                tooltip="Clear Cart"
-                onClick={clearCart}
-                disabled={cart.length === 0}
-              />
-            </FloatButton.Group>
           </TabPane>
 
-          {/* Today's Transactions Tab - UPDATED: Only transactions table with proper credit balance display */}
+          {/* Transactions Tab - UPDATED with proper credit balance display */}
           <TabPane 
             tab={
               <span>
-                <FileTextOutlined />
+                <HistoryOutlined />
                 Today's Transactions
                 <Badge 
                   count={todayTransactions.length} 
                   showZero 
+                  color={COLOR_SCHEME.primary} 
                   style={{ marginLeft: 8 }} 
                 />
               </span>
@@ -2098,45 +2061,339 @@ const currentStock = product.currentStock || 0;
           >
             <TodaysTransactionsCard />
           </TabPane>
-        </Tabs>
 
-        {/* Payment Method Modal */}
-        {renderPaymentModal()}
+          {/* Quick Stats Tab */}
+          <TabPane 
+            tab={
+              <span>
+                <BarChartOutlined />
+                Quick Stats
+              </span>
+            } 
+            key="stats"
+          >
+            <Row gutter={[16, 16]}>
+              <Col xs={24} sm={12} md={8}>
+                <Card 
+                  style={{ 
+                    borderLeft: `4px solid ${COLOR_SCHEME.success}`,
+                    borderRadius: '8px'
+                  }}
+                >
+                  <Statistic
+                    title="Total Sales Today"
+                    value={dailyStats.totalSales}
+                    precision={2}
+                    prefix="KES"
+                    valueStyle={{ color: COLOR_SCHEME.success }}
+                  />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Total revenue from all transactions
+                  </Text>
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8}>
+                <Card 
+                  style={{ 
+                    borderLeft: `4px solid ${COLOR_SCHEME.primary}`,
+                    borderRadius: '8px'
+                  }}
+                >
+                  <Statistic
+                    title="Transactions"
+                    value={dailyStats.totalTransactions}
+                    valueStyle={{ color: COLOR_SCHEME.primary }}
+                  />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Total number of sales
+                  </Text>
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8}>
+                <Card 
+                  style={{ 
+                    borderLeft: `4px solid ${COLOR_SCHEME.warning}`,
+                    borderRadius: '8px'
+                  }}
+                >
+                  <Statistic
+                    title="Items Sold"
+                    value={dailyStats.cashierItemsSold}
+                    valueStyle={{ color: COLOR_SCHEME.warning }}
+                  />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Total items sold today
+                  </Text>
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8}>
+                <Card 
+                  style={{ 
+                    borderLeft: `4px solid ${COLOR_SCHEME.gold}`,
+                    borderRadius: '8px'
+                  }}
+                >
+                  <Statistic
+                    title="Cash Collected"
+                    value={dailyStats.cashAmount}
+                    precision={2}
+                    prefix="KES"
+                    valueStyle={{ color: COLOR_SCHEME.gold }}
+                  />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Cash payments received
+                  </Text>
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8}>
+                <Card 
+                  style={{ 
+                    borderLeft: `4px solid ${COLOR_SCHEME.purple}`,
+                    borderRadius: '8px'
+                  }}
+                >
+                  <Statistic
+                    title="Bank/Mpesa"
+                    value={dailyStats.bankMpesaAmount}
+                    precision={2}
+                    prefix="KES"
+                    valueStyle={{ color: COLOR_SCHEME.purple }}
+                  />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Digital payments received
+                  </Text>
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} md={8}>
+                <Card 
+                  style={{ 
+                    borderLeft: `4px solid ${COLOR_SCHEME.error}`,
+                    borderRadius: '8px'
+                  }}
+                >
+                  <Statistic
+                    title="Outstanding Credit"
+                    value={dailyStats.creditAmount}
+                    precision={2}
+                    prefix="KES"
+                    valueStyle={{ color: COLOR_SCHEME.error }}
+                  />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Pending credit balance
+                  </Text>
+                  {dailyStats.creditTransactions > 0 && (
+                    <Tag color={COLOR_SCHEME.warning} style={{ marginTop: 4 }}>
+                      {dailyStats.creditTransactions} credit transactions
+                    </Tag>
+                  )}
+                </Card>
+              </Col>
+            </Row>
+
+            {/* Credit Transactions Details */}
+            {dailyStats.creditTransactions > 0 && (
+              <Card 
+                title={
+                  <Space>
+                    <CreditCardOutlined />
+                    <span>Credit Transactions Details</span>
+                  </Space>
+                }
+                style={{ marginTop: 16, borderRadius: '8px' }}
+              >
+                <Alert
+                  message="Credit Balance Information"
+                  description="The outstanding credit balance shown above represents only the remaining amounts to be collected. Upfront payments made on credit transactions are already included in cash/bank totals."
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+                <Table
+                  columns={[
+                    {
+                      title: 'Transaction',
+                      dataIndex: 'transactionNumber',
+                      key: 'transactionNumber',
+                    },
+                    {
+                      title: 'Customer',
+                      dataIndex: 'customerName',
+                      key: 'customerName',
+                      render: (text) => text || 'Walk-in',
+                    },
+                    {
+                      title: 'Total Amount',
+                      dataIndex: 'totalAmount',
+                      key: 'totalAmount',
+                      render: (amount) => CashierCalculationUtils.formatCurrency(amount),
+                    },
+                    {
+                      title: 'Amount Paid',
+                      dataIndex: 'amountPaid',
+                      key: 'amountPaid',
+                      render: (amount) => CashierCalculationUtils.formatCurrency(amount || 0),
+                    },
+                    {
+                      title: 'Balance Due',
+                      dataIndex: 'outstandingRevenue',
+                      key: 'outstandingRevenue',
+                      render: (amount) => (
+                        <Text strong type="danger">
+                          {CashierCalculationUtils.formatCurrency(amount || 0)}
+                        </Text>
+                      ),
+                    },
+                    {
+                      title: 'Due Date',
+                      dataIndex: 'dueDate',
+                      key: 'dueDate',
+                      render: (date) => date ? dayjs(date).format('DD/MM/YYYY') : 'Not set',
+                    },
+                    {
+                      title: 'Status',
+                      dataIndex: 'creditStatus',
+                      key: 'creditStatus',
+                      render: (status) => {
+                        const statusConfig = {
+                          paid: { color: COLOR_SCHEME.success, text: 'PAID' },
+                          partially_paid: { color: COLOR_SCHEME.warning, text: 'PARTIAL' },
+                          pending: { color: COLOR_SCHEME.error, text: 'PENDING' },
+                        };
+                        const config = statusConfig[status] || statusConfig.pending;
+                        return (
+                          <Tag color={config.color} style={{ fontWeight: 'bold' }}>
+                            {config.text}
+                          </Tag>
+                        );
+                      }
+                    }
+                  ]}
+                  dataSource={todayTransactions.filter(t => t.paymentMethod === 'credit')}
+                  rowKey="_id"
+                  pagination={{ pageSize: 5 }}
+                  size="small"
+                  locale={{ emptyText: 'No credit transactions today' }}
+                />
+              </Card>
+            )}
+          </TabPane>
+        </Tabs>
 
         {/* Receipt Modal */}
         <Modal
           title={
             <Space>
-              <SafetyCertificateOutlined />
-              Transaction Complete - {selectedShop?.name}
-              <Tag color="green">Success</Tag>
+              <PrinterOutlined />
+              <span>Transaction Receipt</span>
             </Space>
           }
           open={showReceipt}
           onCancel={handleCloseReceipt}
           footer={[
-            <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={handlePrintReceipt}>
+            <Button key="close" onClick={handleCloseReceipt}>
+              Close
+            </Button>,
+            <Button 
+              key="print" 
+              type="primary" 
+              icon={<PrinterOutlined />}
+              onClick={handlePrintReceipt}
+              style={{ backgroundColor: COLOR_SCHEME.primary }}
+            >
               Print Receipt
             </Button>,
-            <Button key="new" type="default" onClick={handleCloseReceipt}>
-              New Sale
-            </Button>,
           ]}
-          width={800}
-          style={{ top: 20 }}
+          width={400}
         >
-          {currentTransaction && (
-            <div id="receipt-print-content">
+          <div id="receipt-print-content">
+            {currentTransaction && (
               <ReceiptTemplate 
                 transaction={currentTransaction}
-                shop={selectedShop}
                 companyInfo={companyInfo}
-                onPrint={handlePrintReceipt}
-                showPrintButton={false}
+                formatCurrency={CashierCalculationUtils.formatCurrency}
               />
-            </div>
-          )}
+            )}
+          </div>
         </Modal>
+
+        {/* Payment Modal */}
+        {renderPaymentModal()}
+
+        {/* Floating Action Button for Quick Actions */}
+        <FloatButton.Group
+          trigger="hover"
+          type="primary"
+          style={{ right: 24, bottom: 24 }}
+          icon={<PlusOutlined />}
+        >
+          <FloatButton 
+            icon={<ShoppingCartOutlined />}
+            tooltip="View Cart"
+            onClick={() => setActiveTab('pos')}
+          />
+          <FloatButton 
+            icon={<HistoryOutlined />}
+            tooltip="Today's Transactions"
+            onClick={() => setActiveTab('transactions')}
+          />
+          <FloatButton 
+            icon={<ReloadOutlined />}
+            tooltip="Refresh Data"
+            onClick={() => {
+              fetchCashierDailyStats();
+              fetchTodayTransactions();
+              fetchProducts();
+              message.success('Data refreshed successfully');
+            }}
+          />
+          <FloatButton 
+            icon={<LogoutOutlined />}
+            tooltip="Logout"
+            onClick={handleLogout}
+          />
+        </FloatButton.Group>
+
+        {/* Low Stock Alert */}
+        {lowStockProducts.length > 0 && (
+          <div style={{ 
+            position: 'fixed', 
+            bottom: 80, 
+            right: 24,
+            zIndex: 1000,
+            maxWidth: 350
+          }}>
+            <Card 
+              size="small"
+              style={{
+                borderColor: COLOR_SCHEME.warning,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                backgroundColor: '#fff7e6'
+              }}
+            >
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Text strong style={{ color: COLOR_SCHEME.warning }}>
+                  <WarningOutlined /> Low Stock Alert
+                </Text>
+                <div style={{ maxHeight: 100, overflowY: 'auto' }}>
+                  {lowStockProducts.slice(0, 5).map(product => (
+                    <div key={product._id} style={{ fontSize: '12px', padding: '2px 0' }}>
+                      <Text>
+                        {product.name}: 
+                        <Text strong type="danger"> {product.currentStock || 0}</Text>
+                        {' '}units remaining
+                      </Text>
+                    </div>
+                  ))}
+                  {lowStockProducts.length > 5 && (
+                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                      +{lowStockProducts.length - 5} more products low in stock
+                    </Text>
+                  )}
+                </div>
+              </Space>
+            </Card>
+          </div>
+        )}
       </Content>
     </Layout>
   );

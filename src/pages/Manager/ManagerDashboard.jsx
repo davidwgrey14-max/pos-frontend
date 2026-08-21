@@ -1,4 +1,4 @@
-// src/pages/Manager/ManagerDashboard.jsx - Manager Dashboard with restricted financial views
+// src/pages/Manager/ManagerDashboard.jsx - FIXED
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Layout, Card, Row, Col, Statistic, Typography, Tag, Space,
@@ -19,11 +19,11 @@ import {
   ClockCircleOutlined, TeamOutlined, ShoppingOutlined,
   EyeOutlined, FileTextOutlined, InfoCircleOutlined,
   RiseOutlined, FallOutlined, StockOutlined,
-  AppstoreOutlined, BarChartOutlined as ChartIcon,
-  PieChartOutlined, LineChartOutlined
+  AppstoreOutlined, ChartIcon, PieChartOutlined, LineChartOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { unifiedAPI, productAPI, creditAPI, transactionAPI } from '../../services/api';
+// FIXED: Add expenseAPI import
+import { unifiedAPI, productAPI, creditAPI, transactionAPI, expenseAPI } from '../../services/api';
 import { CalculationUtils } from '../../utils/calculationUtils';
 import dayjs from 'dayjs';
 import config from '../../config/config';
