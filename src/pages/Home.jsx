@@ -1,4 +1,4 @@
-// src/pages/Home.jsx
+// src/pages/Home.jsx - Fixed version
 import { 
   Container,
   Box,
@@ -21,7 +21,7 @@ import {
   Engineering
 } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
-import { ROLES } from '../config/config';
+import { ROLES, STORAGE_KEYS } from '../config/config';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -64,9 +64,10 @@ const Home = () => {
   useEffect(() => {
     const checkAuth = () => {
       try {
-        const cashierData = localStorage.getItem('cashierData');
-        const adminData = localStorage.getItem('adminData');
-        const managerData = localStorage.getItem('managerData');
+        // Check all possible storage keys
+        const cashierData = localStorage.getItem(STORAGE_KEYS.CASHIER_DATA);
+        const adminData = localStorage.getItem(STORAGE_KEYS.ADMIN_DATA);
+        const managerData = localStorage.getItem(STORAGE_KEYS.MANAGER_DATA);
         
         if (managerData) {
           const parsedData = JSON.parse(managerData);
@@ -80,9 +81,10 @@ const Home = () => {
         }
       } catch (error) {
         console.error('Error parsing auth data:', error);
-        localStorage.removeItem('cashierData');
-        localStorage.removeItem('adminData');
-        localStorage.removeItem('managerData');
+        // Clear corrupted data
+        localStorage.removeItem(STORAGE_KEYS.CASHIER_DATA);
+        localStorage.removeItem(STORAGE_KEYS.ADMIN_DATA);
+        localStorage.removeItem(STORAGE_KEYS.MANAGER_DATA);
       } finally {
         setIsLoading(false);
       }
@@ -110,10 +112,12 @@ const Home = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('cashierData');
-    localStorage.removeItem('adminData');
-    localStorage.removeItem('managerData');
+    localStorage.removeItem(STORAGE_KEYS.CASHIER_DATA);
+    localStorage.removeItem(STORAGE_KEYS.ADMIN_DATA);
+    localStorage.removeItem(STORAGE_KEYS.MANAGER_DATA);
+    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
     setUser(null);
+    navigate('/');
   };
 
   if (isLoading) {
@@ -151,7 +155,6 @@ const Home = () => {
     >
       <CssBaseline />
       
-      {/* Centered Main Content */}
       <Box
         sx={{
           width: '100%',
@@ -166,7 +169,7 @@ const Home = () => {
         <Box sx={{ textAlign: 'center', mb: 2 }}>
           <Typography 
             component="h1" 
-            variant="h3" 
+            variant="h4" 
             sx={{ 
               fontWeight: 'bold',
               color: 'white',
@@ -178,7 +181,7 @@ const Home = () => {
               mb: 1
             }}
           >
-            PAMELA THE PLACE MANAGMENT
+            PAMELA THE PLACE
           </Typography>
           <Typography 
             variant="h6" 
@@ -192,7 +195,7 @@ const Home = () => {
         </Box>
 
         {user ? (
-          // Welcome Back Section - Centered
+          // Welcome Back Section
           <Paper 
             elevation={8} 
             sx={{ 
@@ -205,7 +208,7 @@ const Home = () => {
             }}
           >
             <Typography variant="h5" sx={{ mb: 2, color: 'white', fontWeight: 'bold' }}>
-              Welcome back, {user.name}!
+              Welcome back, {user.name || 'User'}!
             </Typography>
             
             <Typography 
@@ -278,7 +281,7 @@ const Home = () => {
             </Button>
           </Paper>
         ) : (
-          // Login Selection Section - Centered
+          // Login Selection Section
           <Box sx={{ width: '100%' }}>
             <Typography 
               variant="h5" 
@@ -292,7 +295,7 @@ const Home = () => {
               Choose Your Access
             </Typography>
 
-            {/* Admin Login Card */}
+            {/* Admin Login Card - FIXED ROUTE */}
             <Card 
               sx={{ 
                 borderRadius: 3,
@@ -332,7 +335,7 @@ const Home = () => {
 
                 <Button
                   component={Link}
-                  to="/admin-login"
+                  to="/admin/login"
                   variant="contained"
                   fullWidth
                   size="medium"
@@ -355,7 +358,7 @@ const Home = () => {
               </CardContent>
             </Card>
 
-            {/* Manager Login Card */}
+            {/* Manager Login Card - FIXED ROUTE */}
             <Card 
               sx={{ 
                 borderRadius: 3,
@@ -395,7 +398,7 @@ const Home = () => {
 
                 <Button
                   component={Link}
-                  to="/manager-login"
+                  to="/manager/login"
                   variant="contained"
                   fullWidth
                   size="medium"
@@ -418,7 +421,7 @@ const Home = () => {
               </CardContent>
             </Card>
 
-            {/* Cashier Login Card */}
+            {/* Cashier Login Card - FIXED ROUTE */}
             <Card 
               sx={{ 
                 borderRadius: 3,
@@ -458,7 +461,7 @@ const Home = () => {
 
                 <Button
                   component={Link}
-                  to="/cashier-login"
+                  to="/cashier/login"
                   variant="contained"
                   fullWidth
                   size="medium"
@@ -484,7 +487,6 @@ const Home = () => {
             {/* Footer Note */}
             <Box sx={{ mt: 2, textAlign: 'center' }}>
               <Typography variant="caption" sx={{ color: alpha('#fff', 0.6) }}>
-                Fusion XE POS: Streamlining Your Business.
                 Developed by Eliud Maina | Contact: 0746082039
               </Typography>
             </Box>
@@ -494,5 +496,6 @@ const Home = () => {
     </Container>
   );
 };
+
 
 export default Home;
