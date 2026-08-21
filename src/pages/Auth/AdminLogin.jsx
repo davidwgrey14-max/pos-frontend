@@ -121,12 +121,13 @@ const AdminLogin = () => {
         login(userData, response.token, response.sessionId);
         
         // Navigate to admin dashboard
-        setTimeout(() => {
-          navigate('/admin/AdminDashboard', { 
-            replace: true,
-            state: { loginSuccess: true }
-          });
-        }, 500);
+        // In AdminLogin.jsx - handleVerifyCode function
+setTimeout(() => {
+  navigate('/admin/dashboard', { 
+    replace: true,
+    state: { loginSuccess: true }
+  });
+}, 500);
       } else {
         setError(response.message || 'Invalid secure code');
       }
