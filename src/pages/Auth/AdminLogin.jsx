@@ -122,7 +122,7 @@ const AdminLogin = () => {
         
         // Navigate to admin dashboard
         setTimeout(() => {
-          navigate('/admin/dashboard', { 
+          navigate('/admin/AdminDashboard', { 
             replace: true,
             state: { loginSuccess: true }
           });
