@@ -1,77 +1,104 @@
-// // src/components/CashierSidebar.jsx
-// import React from 'react';
-// import {
-//   Drawer,
-//   List,
-//   ListItem,
-//   ListItemIcon,
-//   ListItemText,
-//   ListItemButton,
-//   Typography,
-//   Box
-// } from '@mui/material';
-// import {
-//   PointOfSale,
-//   Receipt,
-//   Inventory,
-//   History,
-//   ShoppingCart,
-//   Dashboard
-// } from '@mui/icons-material';
-// import { useNavigate, useLocation } from 'react-router-dom';
+// src/components/ErrorDisplay.jsx
+import React, { useEffect, useState } from 'react';
 
-// const drawerWidth = 240;
+export const ErrorDisplay = () => {
+  const [error, setError] = useState(null);
 
-// const menuItems = [
-//   { text: 'Dashboard', icon: <Dashboard />, path: '/cashier/dashboard' },
-//   { text: 'Point of Sale', icon: <PointOfSale />, path: '/cashier/point-of-sale' },
-//   { text: 'Sales', icon: <Receipt />, path: '/cashier/sales' },
-//   { text: 'Products', icon: <Inventory />, path: '/cashier/products' },
-//   { text: 'Transactions', icon: <History />, path: '/cashier/transactions' },
-//   { text: 'Orders', icon: <ShoppingCart />, path: '/cashier/orders' },
-//   { text: 'Products Management', icon: <Inventory />, path: '/cashier/products-management' }
-// ];
+  useEffect(() => {
+    // Catch unhandled errors
+    const handleError = (event) => {
+      console.error('Caught error:', event.error || event.message);
+      setError({
+        message: event.error?.message || event.message || 'Unknown error',
+        stack: event.error?.stack || ''
+      });
+    };
 
-// const CashierSidebar = () => {
-//   const navigate = useNavigate();
-//   const location = useLocation();
+    // Catch promise rejections
+    const handleRejection = (event) => {
+      console.error('Caught rejection:', event.reason);
+      setError({
+        message: event.reason?.message || 'Promise rejection',
+        stack: event.reason?.stack || ''
+      });
+    };
 
-//   return (
-//     <Drawer
-//       sx={{
-//         width: drawerWidth,
-//         flexShrink: 0,
-//         '& .MuiDrawer-paper': {
-//           width: drawerWidth,
-//           boxSizing: 'border-box',
-//         },
-//       }}
-//       variant="permanent"
-//       anchor="left"
-//     >
-//       <Box sx={{ p: 2, textAlign: 'center' }}>
-//         <Typography variant="h6" noWrap component="div">
-//           Cashier Panel
-//         </Typography>
-//       </Box>
-      
-//       <List>
-//         {menuItems.map((item) => (
-//           <ListItem key={item.text} disablePadding>
-//             <ListItemButton
-//               selected={location.pathname === item.path}
-//               onClick={() => navigate(item.path)}
-//             >
-//               <ListItemIcon>
-//                 {item.icon}
-//               </ListItemIcon>
-//               <ListItemText primary={item.text} />
-//             </ListItemButton>
-//           </ListItem>
-//         ))}
-//       </List>
-//     </Drawer>
-//   );
-// };
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
 
-// export default CashierSidebar;
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <div style={{
+        padding: '20px',
+        background: '#fff',
+        borderRadius: '8px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+        maxWidth: '800px',
+        margin: '40px auto',
+        fontFamily: 'monospace'
+      }}>
+        <h2 style={{ color: '#f5222d' }}>🚨 Application Error</h2>
+        <div style={{ 
+          background: '#f5f5f5', 
+          padding: '15px', 
+          borderRadius: '4px',
+          marginTop: '10px'
+        }}>
+          <strong>Error Message:</strong>
+          <pre style={{ 
+            whiteSpace: 'pre-wrap', 
+            wordBreak: 'break-all',
+            marginTop: '8px'
+          }}>
+            {error.message}
+          </pre>
+        </div>
+        {error.stack && (
+          <div style={{ 
+            background: '#f5f5f5', 
+            padding: '15px', 
+            borderRadius: '4px',
+            marginTop: '10px'
+          }}>
+            <strong>Stack Trace:</strong>
+            <pre style={{ 
+              whiteSpace: 'pre-wrap', 
+              wordBreak: 'break-all',
+              fontSize: '12px',
+              marginTop: '8px',
+              maxHeight: '300px',
+              overflow: 'auto'
+            }}>
+              {error.stack}
+            </pre>
+          </div>
+        )}
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            marginTop: '20px',
+            padding: '10px 20px',
+            background: '#1890ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '16px'
+          }}
+        >
+          Reload Page
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+export default ErrorDisplay;
