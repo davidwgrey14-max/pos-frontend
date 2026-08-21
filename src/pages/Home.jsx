@@ -1,4 +1,4 @@
-// src/pages/Home.jsx - Fixed version
+// src/pages/Home.jsx - Complete fixed version
 import { 
   Container,
   Box,
@@ -64,10 +64,15 @@ const Home = () => {
   useEffect(() => {
     const checkAuth = () => {
       try {
+        console.log('Checking authentication...');
+        
         // Check all possible storage keys
         const cashierData = localStorage.getItem(STORAGE_KEYS.CASHIER_DATA);
         const adminData = localStorage.getItem(STORAGE_KEYS.ADMIN_DATA);
         const managerData = localStorage.getItem(STORAGE_KEYS.MANAGER_DATA);
+        const userData = localStorage.getItem(STORAGE_KEYS.USER_DATA);
+        
+        console.log('Data found:', { cashierData: !!cashierData, adminData: !!adminData, managerData: !!managerData, userData: !!userData });
         
         if (managerData) {
           const parsedData = JSON.parse(managerData);
@@ -78,6 +83,9 @@ const Home = () => {
         } else if (adminData) {
           const parsedData = JSON.parse(adminData);
           setUser({ ...parsedData, role: ROLES.ADMIN });
+        } else if (userData) {
+          const parsedData = JSON.parse(userData);
+          setUser({ ...parsedData, role: parsedData.role || ROLES.CASHIER });
         }
       } catch (error) {
         console.error('Error parsing auth data:', error);
@@ -85,6 +93,7 @@ const Home = () => {
         localStorage.removeItem(STORAGE_KEYS.CASHIER_DATA);
         localStorage.removeItem(STORAGE_KEYS.ADMIN_DATA);
         localStorage.removeItem(STORAGE_KEYS.MANAGER_DATA);
+        localStorage.removeItem(STORAGE_KEYS.USER_DATA);
       } finally {
         setIsLoading(false);
       }
@@ -115,7 +124,9 @@ const Home = () => {
     localStorage.removeItem(STORAGE_KEYS.CASHIER_DATA);
     localStorage.removeItem(STORAGE_KEYS.ADMIN_DATA);
     localStorage.removeItem(STORAGE_KEYS.MANAGER_DATA);
+    localStorage.removeItem(STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.SELECTED_SHOP);
     setUser(null);
     navigate('/');
   };
@@ -295,7 +306,7 @@ const Home = () => {
               Choose Your Access
             </Typography>
 
-            {/* Admin Login Card - FIXED ROUTE */}
+            {/* Admin Login Card */}
             <Card 
               sx={{ 
                 borderRadius: 3,
@@ -358,7 +369,7 @@ const Home = () => {
               </CardContent>
             </Card>
 
-            {/* Manager Login Card - FIXED ROUTE */}
+            {/* Manager Login Card */}
             <Card 
               sx={{ 
                 borderRadius: 3,
@@ -421,7 +432,7 @@ const Home = () => {
               </CardContent>
             </Card>
 
-            {/* Cashier Login Card - FIXED ROUTE */}
+            {/* Cashier Login Card */}
             <Card 
               sx={{ 
                 borderRadius: 3,
@@ -496,6 +507,5 @@ const Home = () => {
     </Container>
   );
 };
-
 
 export default Home;
