@@ -1,4 +1,4 @@
-// src/pages/Auth/AdminLogin.jsx - Without device verification
+// src/pages/Auth/AdminLogin.jsx - Fixed navigation
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
@@ -10,8 +10,6 @@ import {
   Paper,
   CssBaseline,
   Alert,
-  IconButton,
-  InputAdornment,
   Typography,
   CircularProgress,
   Button,
@@ -108,6 +106,8 @@ const AdminLogin = () => {
         code: formData.secureCode
       });
 
+      console.log('Verify response:', response);
+
       if (response.success) {
         setMessage('Login successful! Redirecting...');
         
@@ -117,8 +117,10 @@ const AdminLogin = () => {
           name: 'System Administrator'
         };
 
+        // Store login info in context
         login(userData, response.token, response.sessionId);
         
+        // Navigate to admin dashboard
         setTimeout(() => {
           navigate('/admin/dashboard', { 
             replace: true,
@@ -129,6 +131,7 @@ const AdminLogin = () => {
         setError(response.message || 'Invalid secure code');
       }
     } catch (err) {
+      console.error('Verify error:', err);
       setError(err.message || 'Failed to verify code');
     } finally {
       setLoading(false);
