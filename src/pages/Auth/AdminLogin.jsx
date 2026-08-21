@@ -247,7 +247,25 @@ const AdminLogin = () => {
           role: 'admin',
           name: 'System Administrator'
         };
+// After successful verification:
+const userData = response.user || {
+  email: formData.email,
+  role: 'admin',
+  name: 'System Administrator'
+};
 
+// Handle manager role
+if (userData.role === 'manager') {
+  login(userData, response.token, response.sessionId);
+  setTimeout(() => {
+    navigate('/manager/dashboard', { replace: true });
+  }, 500);
+} else {
+  login(userData, response.token, response.sessionId);
+  setTimeout(() => {
+    navigate('/admin/dashboard', { replace: true });
+  }, 500);
+}
         // Store login info
         login(userData, response.token, response.sessionId);
         

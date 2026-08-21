@@ -1,3 +1,4 @@
+// src/pages/Home.jsx
 import { 
   Container,
   Box,
@@ -12,7 +13,13 @@ import {
   CircularProgress
 } from '@mui/material';
 import { Link, useNavigate } from 'react-router-dom';
-import { PointOfSale, AdminPanelSettings, Security, Speed } from '@mui/icons-material';
+import { 
+  PointOfSale, 
+  AdminPanelSettings, 
+  Security, 
+  Speed,
+  Engineering
+} from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import { ROLES } from '../config/config';
 
@@ -41,6 +48,12 @@ const Home = () => {
       dark: '#D97706',
       gradient: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)'
     },
+    manager: {
+      main: '#8B5CF6',
+      light: '#A78BFA',
+      dark: '#7C3AED',
+      gradient: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)'
+    },
     background: {
       main: '#0F172A',
       light: '#1E293B',
@@ -53,8 +66,12 @@ const Home = () => {
       try {
         const cashierData = localStorage.getItem('cashierData');
         const adminData = localStorage.getItem('adminData');
+        const managerData = localStorage.getItem('managerData');
         
-        if (cashierData) {
+        if (managerData) {
+          const parsedData = JSON.parse(managerData);
+          setUser({ ...parsedData, role: ROLES.MANAGER });
+        } else if (cashierData) {
           const parsedData = JSON.parse(cashierData);
           setUser({ ...parsedData, role: ROLES.CASHIER });
         } else if (adminData) {
@@ -65,6 +82,7 @@ const Home = () => {
         console.error('Error parsing auth data:', error);
         localStorage.removeItem('cashierData');
         localStorage.removeItem('adminData');
+        localStorage.removeItem('managerData');
       } finally {
         setIsLoading(false);
       }
@@ -74,12 +92,27 @@ const Home = () => {
   }, []);
 
   const getDashboardPath = () => {
-    return user?.role === ROLES.ADMIN ? '/admin/dashboard' : '/cashier/dashboard';
+    if (user?.role === ROLES.ADMIN) return '/admin/dashboard';
+    if (user?.role === ROLES.MANAGER) return '/manager/dashboard';
+    return '/cashier/dashboard';
+  };
+
+  const getRoleIcon = () => {
+    if (user?.role === ROLES.ADMIN) return <AdminPanelSettings />;
+    if (user?.role === ROLES.MANAGER) return <Engineering />;
+    return <PointOfSale />;
+  };
+
+  const getRoleName = () => {
+    if (user?.role === ROLES.ADMIN) return 'Administrator';
+    if (user?.role === ROLES.MANAGER) return 'Manager';
+    return 'Cashier';
   };
 
   const handleLogout = () => {
     localStorage.removeItem('cashierData');
     localStorage.removeItem('adminData');
+    localStorage.removeItem('managerData');
     setUser(null);
   };
 
@@ -186,8 +219,8 @@ const Home = () => {
                 gap: 1
               }}
             >
-              {user.role === ROLES.ADMIN ? <AdminPanelSettings /> : <PointOfSale />}
-              {user.role === ROLES.ADMIN ? 'Administrator' : 'Cashier'} Access
+              {getRoleIcon()}
+              {getRoleName()} Access
             </Typography>
             
             <Button
@@ -200,18 +233,29 @@ const Home = () => {
                 py: 1.5, 
                 borderRadius: 2,
                 mb: 2,
-                background: user.role === ROLES.ADMIN ? colors.admin.gradient : colors.cashier.gradient,
+                background: user.role === ROLES.ADMIN 
+                  ? colors.admin.gradient 
+                  : user.role === ROLES.MANAGER 
+                    ? colors.manager.gradient 
+                    : colors.cashier.gradient,
                 fontSize: '1rem',
                 fontWeight: 'bold',
                 '&:hover': {
                   transform: 'translateY(-2px)',
-                  boxShadow: `0 8px 25px ${alpha(user.role === ROLES.ADMIN ? colors.admin.main : colors.cashier.main, 0.4)}`,
+                  boxShadow: `0 8px 25px ${alpha(
+                    user.role === ROLES.ADMIN 
+                      ? colors.admin.main 
+                      : user.role === ROLES.MANAGER 
+                        ? colors.manager.main 
+                        : colors.cashier.main, 
+                    0.4
+                  )}`,
                 },
                 transition: 'all 0.3s ease'
               }}
-              startIcon={user.role === ROLES.ADMIN ? <AdminPanelSettings /> : <PointOfSale />}
+              startIcon={getRoleIcon()}
             >
-              Go to {user.role === ROLES.ADMIN ? 'Admin' : 'Cashier'} Dashboard
+              Go to {getRoleName()} Dashboard
             </Button>
             
             <Button
@@ -311,6 +355,69 @@ const Home = () => {
               </CardContent>
             </Card>
 
+            {/* Manager Login Card */}
+            <Card 
+              sx={{ 
+                borderRadius: 3,
+                background: `linear-gradient(135deg, ${colors.manager.main}20 0%, ${colors.manager.light}20 100%)`,
+                border: `2px solid ${alpha(colors.manager.main, 0.3)}`,
+                transition: 'all 0.3s ease',
+                mb: 2,
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  border: `2px solid ${colors.manager.main}`,
+                  boxShadow: `0 8px 25px ${alpha(colors.manager.main, 0.3)}`
+                }
+              }}
+            >
+              <CardContent sx={{ p: 3, textAlign: 'center' }}>
+                <Avatar 
+                  sx={{ 
+                    m: '0 auto 15px',
+                    width: 60,
+                    height: 60,
+                    background: colors.manager.gradient
+                  }}
+                >
+                  <Engineering sx={{ fontSize: 30 }} />
+                </Avatar>
+                
+                <Typography variant="h5" sx={{ mb: 2, color: 'white', fontWeight: 'bold' }}>
+                  Manager Login
+                </Typography>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2, gap: 1 }}>
+                  <Security sx={{ color: colors.manager.light }} />
+                  <Typography variant="body2" sx={{ color: colors.manager.light }}>
+                    Inventory & Operations
+                  </Typography>
+                </Box>
+
+                <Button
+                  component={Link}
+                  to="/manager-login"
+                  variant="contained"
+                  fullWidth
+                  size="medium"
+                  sx={{ 
+                    py: 1,
+                    borderRadius: 2,
+                    background: colors.manager.gradient,
+                    fontWeight: 'bold',
+                    '&:hover': {
+                      background: colors.manager.dark,
+                      transform: 'translateY(-2px)',
+                      boxShadow: `0 6px 20px ${alpha(colors.manager.main, 0.4)}`
+                    },
+                    transition: 'all 0.3s ease'
+                  }}
+                  startIcon={<Engineering />}
+                >
+                  Manager Login
+                </Button>
+              </CardContent>
+            </Card>
+
             {/* Cashier Login Card */}
             <Card 
               sx={{ 
@@ -377,8 +484,8 @@ const Home = () => {
             {/* Footer Note */}
             <Box sx={{ mt: 2, textAlign: 'center' }}>
               <Typography variant="caption" sx={{ color: alpha('#fff', 0.6) }}>
-        Fusion XE POS: Streamlining Your Business.
- Developed by Eliud Maina | Contact: 0746082039
+                Fusion XE POS: Streamlining Your Business.
+                Developed by Eliud Maina | Contact: 0746082039
               </Typography>
             </Box>
           </Box>
@@ -389,11 +496,3 @@ const Home = () => {
 };
 
 export default Home;
-
-// Powerful, Easy-to-Use Point of Sale Systems.
-// Custom Developed by Fusion XE | 0111999685
-
-
-
-//   Fusion XE POS: Streamlining Your Business.
-// Developed by Stancylus Kalong'o | Contact: 0746919850

@@ -325,6 +325,62 @@ export const authAPI = {
     }
   },
 
+  // In authAPI object, add after cashierLogin:
+
+managerLogin: async (credentials) => {
+  try {
+    console.log('🔐 Attempting manager login...');
+    
+    
+    let response;
+    const loginAttempts = [
+      '/auth/manager/login',
+      '/manager/login',
+      '/auth/login'
+    ];
+
+    for (const endpoint of loginAttempts) {
+      try {
+        const fastInstance = createApiInstance(API_CONFIG.baseURL, 8000);
+        response = await fastInstance.post(endpoint, {
+          email: credentials.email,
+          password: credentials.password,
+          role: 'manager',
+          deviceId: credentials.deviceId || localStorage.getItem('deviceId')
+        });
+        break;
+      } catch (endpointError) {
+        continue;
+      }
+    }
+
+    if (!response) {
+      throw new Error('All login endpoints failed');
+    }
+
+    const data = response.data;
+    
+    if (data.success === true || data.token || data.access_token) {
+      const user = data.user || data.data?.user || data.data || data;
+      const token = data.token || data.access_token;
+      
+      localStorage.setItem('managerToken', token);
+      localStorage.setItem('managerData', JSON.stringify(user));
+      localStorage.setItem('userToken', token);
+      localStorage.setItem('userData', JSON.stringify(user));
+      localStorage.setItem('sessionToken', token);
+      localStorage.setItem('authToken', token);
+      
+      return { success: true, user, token, device: data.device };
+    } else {
+      throw new Error(data.message || 'Login failed');
+    }
+  } catch (error) {
+    console.error('Manager login error:', error);
+    throw new Error(error.message || 'Login failed');
+  }
+},
+
   // ==================== SECURE CODE LOGIN ====================
   
   requestSecureCode: async (emailData) => {
@@ -378,18 +434,17 @@ export const authAPI = {
         fastApi.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
       }
       
-      if (user.role === 'admin') {
-        localStorage.setItem('adminData', JSON.stringify(user));
-        localStorage.setItem('userData', JSON.stringify(user));
-        console.log('✅ Admin data stored');
-      } else if (user.role === 'cashier') {
-        localStorage.setItem('cashierData', JSON.stringify(user));
-        localStorage.setItem('userData', JSON.stringify(user));
-        console.log('✅ Cashier data stored');
-      } else {
-        localStorage.setItem('userData', JSON.stringify(user));
-        console.log('✅ User data stored');
-      }
+      // In authAPI.verifySecureCode, after the user data extraction:
+if (user.role === 'admin') {
+  localStorage.setItem('adminData', JSON.stringify(user));
+  localStorage.setItem('userData', JSON.stringify(user));
+} else if (user.role === 'manager') {
+  localStorage.setItem('managerData', JSON.stringify(user));
+  localStorage.setItem('userData', JSON.stringify(user));
+} else if (user.role === 'cashier') {
+  localStorage.setItem('cashierData', JSON.stringify(user));
+  localStorage.setItem('userData', JSON.stringify(user));
+}
       
       if (data.device) {
         localStorage.setItem('deviceId', data.device.deviceId || data.device.id);
@@ -1286,8 +1341,6 @@ export const adminAPI = {
 
 // ==================== EXPORT MAIN API SERVICE ====================
 
-// ==================== EXPORT MAIN API SERVICE ====================
-
 const apiService = {
   auth: authAPI,
   unified: unifiedAPI,
@@ -1297,10 +1350,68 @@ const apiService = {
   expense: expenseAPI,
   transaction: transactionAPI,
   credit: creditAPI,
-  admin: adminAPI,  // <-- ADD THIS
+  admin: adminAPI,
   cache,
   clearCache: () => cache.clearAll(),
-  handleApiError
+  handleApiError,
+  // Add missing utils object
+  utils: {
+    validateToken: (userType) => {
+      try {
+        const tokenKey = userType === 'cashier' ? 'cashierToken' : 
+                         userType === 'manager' ? 'managerToken' : 'adminToken';
+        const token = localStorage.getItem(tokenKey) || localStorage.getItem('authToken');
+        if (!token) return false;
+        // Simple token validation (check it's not expired)
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload.exp && Date.now() >= payload.exp * 1000) {
+            return false;
+          }
+        }
+        return true;
+      } catch (error) {
+        console.error('Token validation error:', error);
+        return false;
+      }
+    },
+    getAuthToken: (userType) => {
+      const tokenKey = userType === 'cashier' ? 'cashierToken' : 
+                       userType === 'manager' ? 'managerToken' : 'adminToken';
+      return localStorage.getItem(tokenKey) || localStorage.getItem('authToken');
+    },
+    setAuthToken: (token, userType) => {
+      const tokenKey = userType === 'cashier' ? 'cashierToken' : 
+                       userType === 'manager' ? 'managerToken' : 'adminToken';
+      localStorage.setItem(tokenKey, token);
+      localStorage.setItem('authToken', token);
+    },
+    isAuthenticated: (userType) => {
+      const tokenKey = userType === 'cashier' ? 'cashierToken' : 
+                       userType === 'manager' ? 'managerToken' : 'adminToken';
+      const userDataKey = userType === 'cashier' ? 'cashierData' : 
+                         userType === 'manager' ? 'managerData' : 'adminData';
+      const token = localStorage.getItem(tokenKey) || localStorage.getItem('authToken');
+      const userData = localStorage.getItem(userDataKey) || localStorage.getItem('userData');
+      return !!(token && userData && apiService.utils.validateToken(userType));
+    },
+    clearAuth: () => {
+      localStorage.removeItem('cashierData');
+      localStorage.removeItem('cashierToken');
+      localStorage.removeItem('managerData');
+      localStorage.removeItem('managerToken');
+      localStorage.removeItem('adminData');
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('sessionToken');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('deviceId');
+      localStorage.removeItem('deviceVerified');
+      localStorage.removeItem('userData');
+      localStorage.removeItem('userToken');
+      cache.clearAll();
+    }
+  }
 };
 
 export default apiService;

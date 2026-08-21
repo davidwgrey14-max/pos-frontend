@@ -440,6 +440,17 @@ const CashierDashboard = () => {
       message.error('Cannot add product to cart. Product data is invalid.');
       return;
     }
+const currentStock = product.currentStock || 0;
+  
+  if (currentStock <= 0) {
+    message.warning(`${product.name} is out of stock.`);
+    return;
+  }
+
+  if (quantity > currentStock) {
+    message.warning(`Only ${currentStock} items available in stock for ${product.name}.`);
+    quantity = currentStock;
+  }
 
     const currentStock = product.currentStock || 0;
     

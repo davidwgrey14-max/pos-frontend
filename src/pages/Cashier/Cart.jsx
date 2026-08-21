@@ -275,18 +275,18 @@ const Cart = ({
                           {/* Quantity & Stock Row */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                             <Space>
-                              <InputNumber
-                                size="small"
-                                min={1}
-                                max={Math.min(item.stock, 999)}
-                                value={item.quantity}
-                                onChange={(value) => onUpdateItem(item.productId, value)}
-                                style={{ width: '60px' }}
-                                disabled={loading || item.stock === 0}
-                              />
-                              <Text type="secondary" style={{ fontSize: '12px' }}>
-                                × {item.quantity} units
-                              </Text>
+                              // In Cart.jsx, update quantity input:
+<InputNumber
+  size="small"
+  min={0.1}
+  max={Math.min(item.stock, 999)}
+  value={item.quantity}
+  onChange={(value) => onUpdateItem(item.productId, value)}
+  style={{ width: '60px' }}
+  disabled={loading || item.stock === 0}
+  step={0.5}
+  precision={2}
+/>
                             </Space>
                             <Text type="secondary" style={{ fontSize: '12px' }}>
                               Stock: {item.stock}
