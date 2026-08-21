@@ -1,11 +1,10 @@
-// src/pages/Cashier/CashierLogin.jsx - Enhanced with device verification
-import React, { useState, useEffect } from 'react';
+// src/pages/Cashier/CashierLogin.jsx - Without device verification
+import React, { useState } from 'react';
 import { 
   Container, Box, Typography, Avatar, Paper, CssBaseline, Alert, Button,
-  CircularProgress, TextField, InputAdornment, IconButton, Dialog,
-  DialogTitle, DialogContent, DialogActions, LinearProgress
+  CircularProgress, TextField, InputAdornment, IconButton
 } from '@mui/material';
-import { PointOfSale, ArrowBack, Visibility, VisibilityOff, Devices } from '@mui/icons-material';
+import { PointOfSale, ArrowBack, Visibility, VisibilityOff } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
 import { authAPI } from '../../services/api';
@@ -16,15 +15,11 @@ const CashierLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [showDeviceDialog, setShowDeviceDialog] = useState(false);
-  const [deviceInfo, setDeviceInfo] = useState(null);
-  const [verificationStatus, setVerificationStatus] = useState('checking');
   const [credentials, setCredentials] = useState({
     email: '',
     password: ''
   });
 
-  // Color scheme
   const colors = {
     cashier: {
       main: '#10B981',
@@ -36,87 +31,6 @@ const CashierLogin = () => {
       main: '#0F172A',
       paper: '#334155'
     }
-  };
-
-  const getDeviceInfo = () => {
-    const userAgent = navigator.userAgent;
-    return {
-      deviceId: localStorage.getItem('deviceId') || generateDeviceId(),
-      deviceName: getDeviceName(userAgent),
-      deviceType: getDeviceType(userAgent),
-      os: getOS(userAgent),
-      osVersion: getOSVersion(userAgent),
-      browser: getBrowser(userAgent),
-      browserVersion: getBrowserVersion(userAgent),
-      macAddress: generateMacAddress(),
-      userAgent: userAgent,
-      ipAddress: 'detected'
-    };
-  };
-
-  const generateDeviceId = () => {
-    const id = 'dev_' + Math.random().toString(36).substr(2, 9);
-    localStorage.setItem('deviceId', id);
-    return id;
-  };
-
-  const getDeviceName = (ua) => {
-    if (ua.includes('Windows')) return 'Windows PC';
-    if (ua.includes('Mac')) return 'Mac';
-    if (ua.includes('iPhone')) return 'iPhone';
-    if (ua.includes('iPad')) return 'iPad';
-    if (ua.includes('Android')) return 'Android Device';
-    return 'Unknown Device';
-  };
-
-  const getDeviceType = (ua) => {
-    if (ua.includes('Mobile')) return 'mobile';
-    if (ua.includes('Tablet')) return 'tablet';
-    return 'desktop';
-  };
-
-  const getOS = (ua) => {
-    if (ua.includes('Windows NT 10.0')) return 'Windows 10';
-    if (ua.includes('Windows NT 6.1')) return 'Windows 7';
-    if (ua.includes('Mac OS X')) return 'macOS';
-    if (ua.includes('iPhone')) return 'iOS';
-    if (ua.includes('Android')) return 'Android';
-    return 'Unknown';
-  };
-
-  const getOSVersion = (ua) => {
-    const match = ua.match(/Windows NT (\d+\.\d+)/) || 
-                  ua.match(/Mac OS X (\d+[._]\d+)/) ||
-                  ua.match(/Android (\d+[._]\d+)/);
-    return match ? match[1] : 'Unknown';
-  };
-
-  const getBrowser = (ua) => {
-    if (ua.includes('Chrome') && !ua.includes('Edg')) return 'Chrome';
-    if (ua.includes('Firefox')) return 'Firefox';
-    if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
-    if (ua.includes('Edg')) return 'Edge';
-    return 'Unknown';
-  };
-
-  const getBrowserVersion = (ua) => {
-    const match = ua.match(/Chrome\/(\d+)/) ||
-                  ua.match(/Firefox\/(\d+)/) ||
-                  ua.match(/Version\/(\d+)/);
-    return match ? match[1] : 'Unknown';
-  };
-
-  const generateMacAddress = () => {
-    const chars = '0123456789ABCDEF';
-    let mac = '';
-    for (let i = 0; i < 6; i++) {
-      let octet = '';
-      for (let j = 0; j < 2; j++) {
-        octet += chars[Math.floor(Math.random() * 16)];
-      }
-      mac += (i > 0 ? ':' : '') + octet;
-    }
-    return mac;
   };
 
   const handleLogin = async (e) => {
@@ -137,22 +51,6 @@ const CashierLogin = () => {
     setError(null);
     
     try {
-      // First check if device is verified
-      const deviceInfo = getDeviceInfo();
-      const deviceCheck = await authAPI.checkDevice({ 
-        email: credentials.email, 
-        deviceInfo 
-      });
-
-      if (deviceCheck.requiresVerification) {
-        setDeviceInfo(deviceCheck.deviceInfo);
-        setShowDeviceDialog(true);
-        setVerificationStatus('pending');
-        setLoading(false);
-        return;
-      }
-
-      // Proceed with login
       const response = await authAPI.cashierLogin({
         email: credentials.email,
         password: credentials.password
@@ -354,58 +252,6 @@ const CashierLogin = () => {
           </form>
         </Paper>
       </Box>
-
-      {/* Device Verification Dialog */}
-      <Dialog open={showDeviceDialog} onClose={() => setShowDeviceDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Devices color="warning" />
-          Device Verification Required
-        </DialogTitle>
-        <DialogContent>
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            A new device is trying to access your account. Please wait for admin approval.
-          </Alert>
-          
-          {deviceInfo && (
-            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
-              <Typography variant="subtitle2" gutterBottom>Device Details:</Typography>
-              <Typography variant="body2" color="text.secondary">
-                <strong>Device:</strong> {deviceInfo.deviceName}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                <strong>OS:</strong> {deviceInfo.os} {deviceInfo.osVersion}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                <strong>Browser:</strong> {deviceInfo.browser} {deviceInfo.browserVersion}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                <strong>MAC:</strong> {deviceInfo.macAddress}
-              </Typography>
-            </Paper>
-          )}
-          
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              An email has been sent to administrators. Please wait for approval or try again later.
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowDeviceDialog(false)} color="primary">
-            Dismiss
-          </Button>
-          <Button 
-            onClick={() => {
-              setShowDeviceDialog(false);
-              setCredentials(prev => ({ ...prev, password: '' }));
-            }}
-            color="primary"
-            variant="contained"
-          >
-            Try Again
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Container>
   );
 };

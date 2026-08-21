@@ -1,10 +1,13 @@
-// src/pages/Manager/ManagerLogin.jsx
+// src/pages/Manager/ManagerLogin.jsx - Without device verification
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
 import { authAPI } from '../../services/api';
-import { Container, Box, Typography, Avatar, Paper, CssBaseline, Alert, Button, CircularProgress, TextField, InputAdornment, IconButton, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
-import { Engineering, Visibility, VisibilityOff, Devices } from '@mui/icons-material';
+import { 
+  Container, Box, Typography, Avatar, Paper, CssBaseline, Alert, 
+  Button, CircularProgress, TextField, InputAdornment, IconButton 
+} from '@mui/material';
+import { Engineering, Visibility, VisibilityOff } from '@mui/icons-material';
 
 const ManagerLogin = () => {
   const navigate = useNavigate();
@@ -12,36 +15,19 @@ const ManagerLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [showDeviceDialog, setShowDeviceDialog] = useState(false);
-  const [deviceInfo, setDeviceInfo] = useState(null);
   const [credentials, setCredentials] = useState({ email: '', password: '' });
 
   const colors = {
-    primary: { main: '#8B5CF6', light: '#A78BFA', dark: '#7C3AED', gradient: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)' },
-    background: { main: '#0F172A', paper: '#334155' }
-  };
-
-  const getDeviceInfo = () => {
-    // FIXED: Define ua as navigator.userAgent
-    const ua = navigator.userAgent || navigator.vendor || window.opera || '';
-    
-    return {
-      deviceId: localStorage.getItem('deviceId') || 'dev_' + Math.random().toString(36).substr(2, 9),
-      deviceName: ua.includes('Windows') ? 'Windows PC' : 
-                  ua.includes('Mac') ? 'Mac' : 
-                  ua.includes('iPhone') ? 'iPhone' : 
-                  ua.includes('Android') ? 'Android Device' : 'Unknown Device',
-      deviceType: ua.includes('Mobile') ? 'mobile' : 'desktop',
-      os: ua.includes('Windows NT 10.0') ? 'Windows 10' : 
-          ua.includes('Mac OS X') ? 'macOS' : 
-          ua.includes('iPhone') ? 'iOS' : 
-          ua.includes('Android') ? 'Android' : 'Unknown',
-      browser: ua.includes('Chrome') ? 'Chrome' : 
-               ua.includes('Firefox') ? 'Firefox' : 
-               ua.includes('Safari') ? 'Safari' : 'Unknown',
-      macAddress: 'MAC_' + Math.random().toString(16).slice(2, 8).toUpperCase(),
-      userAgent: ua
-    };
+    primary: { 
+      main: '#8B5CF6', 
+      light: '#A78BFA', 
+      dark: '#7C3AED', 
+      gradient: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)' 
+    },
+    background: { 
+      main: '#0F172A', 
+      paper: '#334155' 
+    }
   };
 
   const handleLogin = async (e) => {
@@ -53,15 +39,10 @@ const ManagerLogin = () => {
     setLoading(true);
     setError(null);
     try {
-      const deviceInfoData = getDeviceInfo();
-      const deviceCheck = await authAPI.checkDevice({ email: credentials.email, deviceInfo: deviceInfoData });
-      if (deviceCheck.requiresVerification) {
-        setDeviceInfo(deviceCheck.deviceInfo);
-        setShowDeviceDialog(true);
-        setLoading(false);
-        return;
-      }
-      const response = await authAPI.managerLogin({ email: credentials.email, password: credentials.password });
+      const response = await authAPI.managerLogin({ 
+        email: credentials.email, 
+        password: credentials.password 
+      });
       if (response.success) {
         login(response.user, response.token, response.sessionId);
         navigate('/manager/dashboard', { replace: true });
@@ -75,21 +56,30 @@ const ManagerLogin = () => {
     }
   };
 
-  // FIXED: Fixed the password field IconButton nesting issue
   return (
-    <Container component="main" maxWidth="sm" sx={{ 
-      background: colors.background.main, 
-      minHeight: '100vh', 
-      padding: 3, 
-      display: 'flex', 
-      flexDirection: 'column', 
-      justifyContent: 'center' 
-    }}>
+    <Container 
+      component="main" 
+      maxWidth="sm" 
+      sx={{ 
+        background: colors.background.main, 
+        minHeight: '100vh', 
+        padding: 3, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        justifyContent: 'center' 
+      }}
+    >
       <CssBaseline />
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Avatar sx={{ width: 70, height: 70, background: colors.primary.gradient, mb: 2 }}>
+        <Avatar sx={{ 
+          width: 70, 
+          height: 70, 
+          background: colors.primary.gradient, 
+          mb: 2 
+        }}>
           {loading ? <CircularProgress size={24} color="inherit" /> : <Engineering sx={{ fontSize: 36 }} />}
         </Avatar>
+        
         <Typography variant="h4" sx={{ 
           mb: 1, 
           fontWeight: 'bold', 
@@ -100,7 +90,13 @@ const ManagerLogin = () => {
         }}>
           Manager Login
         </Typography>
-        {error && <Alert severity="error" sx={{ width: '100%', mb: 3, borderRadius: 2 }}>{error}</Alert>}
+        
+        {error && (
+          <Alert severity="error" sx={{ width: '100%', mb: 3, borderRadius: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+        
         <Paper elevation={8} sx={{ 
           p: 4, 
           width: '100%', 
@@ -120,8 +116,21 @@ const ManagerLogin = () => {
               disabled={loading} 
               autoComplete="email" 
               autoFocus 
-              sx={{ mb: 2 }} 
+              sx={{ 
+                mb: 2,
+                '& .MuiOutlinedInput-root': {
+                  color: 'white',
+                  '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' },
+                  '&:hover fieldset': { borderColor: colors.primary.light },
+                  '&.Mui-focused fieldset': { borderColor: colors.primary.main },
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  '&.Mui-focused': { color: colors.primary.light },
+                },
+              }} 
             />
+            
             <TextField 
               fullWidth 
               required 
@@ -132,16 +141,32 @@ const ManagerLogin = () => {
               onChange={(e) => setCredentials({ ...credentials, password: e.target.value })} 
               disabled={loading} 
               autoComplete="current-password" 
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: 'white',
+                  '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' },
+                  '&:hover fieldset': { borderColor: colors.primary.light },
+                  '&.Mui-focused fieldset': { borderColor: colors.primary.main },
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  '&.Mui-focused': { color: colors.primary.light },
+                },
+              }}
               InputProps={{ 
                 endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton onClick={() => setShowPassword(!showPassword)}>
+                    <IconButton 
+                      onClick={() => setShowPassword(!showPassword)} 
+                      sx={{ color: 'rgba(255, 255, 255, 0.5)' }}
+                    >
                       {showPassword ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </InputAdornment>
                 ) 
               }} 
             />
+            
             <Button 
               type="submit" 
               fullWidth 
@@ -152,8 +177,19 @@ const ManagerLogin = () => {
                 mt: 3, 
                 py: 1.5, 
                 background: colors.primary.gradient, 
-                borderRadius: 2, 
-                '&:hover': { background: colors.primary.dark } 
+                borderRadius: 2,
+                fontSize: '1rem',
+                fontWeight: 'bold',
+                '&:hover': { 
+                  background: colors.primary.dark,
+                  transform: 'translateY(-2px)',
+                  boxShadow: `0 8px 25px ${colors.primary.main}40`
+                },
+                '&:disabled': {
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'rgba(255, 255, 255, 0.3)'
+                },
+                transition: 'all 0.3s ease'
               }}
             >
               {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
@@ -161,16 +197,6 @@ const ManagerLogin = () => {
           </form>
         </Paper>
       </Box>
-      <Dialog open={showDeviceDialog} onClose={() => setShowDeviceDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Device Verification Required</DialogTitle>
-        <DialogContent>
-          <Alert severity="warning">A new device is trying to access your account. Please wait for admin approval.</Alert>
-          {deviceInfo && <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>Device: {deviceInfo.deviceName}</Paper>}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowDeviceDialog(false)}>Dismiss</Button>
-        </DialogActions>
-      </Dialog>
     </Container>
   );
 };
