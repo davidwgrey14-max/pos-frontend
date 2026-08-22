@@ -1,9 +1,9 @@
-// src/pages/Admin/AdminDashboard.jsx - Full Navigation Enabled
+// src/pages/Admin/AdminDashboard.jsx - Enhanced with Complete Financial Overview
 import React, { useState, useEffect } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
   Button, Modal, Space, Tooltip, message, Badge, Avatar,
-  Dropdown, Input, Select, DatePicker, Switch, Divider
+  Dropdown, Input, Select, DatePicker, Switch, Divider, Progress
 } from 'antd';
 import {
   DashboardOutlined,
@@ -28,7 +28,13 @@ import {
   TeamOutlined,
   SettingOutlined,
   FileTextOutlined,
-  PlusOutlined
+  PlusOutlined,
+  RiseOutlined,
+  FallOutlined,
+  StockOutlined,
+  WalletOutlined,
+  PercentageOutlined,
+  CalculatorOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
@@ -69,7 +75,15 @@ const AdminDashboard = () => {
       totalCash: 0,
       totalMpesaBank: 0,
       profitMargin: 0,
-      totalItemsSold: 0
+      totalItemsSold: 0,
+      // NEW METRICS
+      costOfGoodsSold: 0,
+      grossProfitMargin: 0,
+      totalTransactions: 0,
+      averageTransactionValue: 0,
+      creditCollectionRate: 0,
+      totalCreditGiven: 0,
+      recognizedCreditRevenue: 0
     },
     businessStats: {
       totalProducts: 0,
@@ -187,94 +201,90 @@ const AdminDashboard = () => {
     }
   };
 
-
   // Fetch dashboard data from backend
-// Fetch dashboard data from backend
-const fetchDashboardData = async (customFilters = null) => {
-  const activeFilters = customFilters || filters;
-  
-  console.log('🚀 Fetching dashboard data with filters:', activeFilters);
-  
-  try {
-    setLoading(true);
-    setRefreshing(true);
+  const fetchDashboardData = async (customFilters = null) => {
+    const activeFilters = customFilters || filters;
     
-    // Fetch shops first
-    const shopsData = await shopAPI.getAll();
-    console.log('🏪 Shops fetched:', shopsData?.length || 0);
-    setShops(shopsData || []);
+    console.log('🚀 Fetching dashboard data with filters:', activeFilters);
+    
+    try {
+      setLoading(true);
+      setRefreshing(true);
+      
+      // Fetch shops first
+      const shopsData = await shopAPI.getAll();
+      console.log('🏪 Shops fetched:', shopsData?.length || 0);
+      setShops(shopsData || []);
 
-    // Build params for combined API
-    const params = {};
-    if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
-      params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
-      params.endDate = activeFilters.dateRange[1].format('YYYY-MM-DD');
-    }
-    if (activeFilters.shop && activeFilters.shop !== 'all') {
-      params.shopId = activeFilters.shop;
-    }
+      // Build params for combined API
+      const params = {};
+      if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
+        params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
+        params.endDate = activeFilters.dateRange[1].format('YYYY-MM-DD');
+      }
+      if (activeFilters.shop && activeFilters.shop !== 'all') {
+        params.shopId = activeFilters.shop;
+      }
 
-    // Fetch combined transaction data from backend
-    console.log('📡 Fetching combined data with params:', params);
-    const response = await unifiedAPI.getCombinedTransactions(params);
-    console.log('📊 Combined data response:', response);
-    
-    // ✅ FIXED: Handle response properly
-    let data = {};
-    
-    if (!response) {
-      throw new Error('No response received from server');
-    }
-    
-    // Check if response has a success property
-    if (response.success === true) {
-      // Standard API success response
-      data = response.data || response;
-    } else if (response.success === false) {
-      // API returned error
-      console.error('API returned error:', response.message);
-      throw new Error(response.message || 'Failed to fetch data');
-    } else {
-      // No success property - use response directly as data
-      data = response;
-    }
+      // Fetch combined transaction data from backend
+      console.log('📡 Fetching combined data with params:', params);
+      const response = await unifiedAPI.getCombinedTransactions(params);
+      console.log('📊 Combined data response:', response);
+      
+      // Handle response properly
+      let data = {};
+      
+      if (!response) {
+        throw new Error('No response received from server');
+      }
+      
+      // Check if response has a success property
+      if (response.success === true) {
+        data = response.data || response;
+      } else if (response.success === false) {
+        console.error('API returned error:', response.message);
+        throw new Error(response.message || 'Failed to fetch data');
+      } else {
+        data = response;
+      }
 
-    // Process the data
-    const processedData = processDashboardData(data, shopsData);
-    
-    setDashboardData(prev => ({
-      ...processedData,
-      pendingVerifications: prev.pendingVerifications || []
-    }));
-    setDataTimestamp(new Date().toISOString());
-    
-    console.log('✅ Dashboard data processed successfully');
-    
-  } catch (error) {
-    console.error('💥 Dashboard fetch failed:', error);
-    message.error(error.message || 'Failed to load dashboard data');
-    
-    // Set default/empty data on error
-    setDashboardData(prev => ({
-      ...prev,
-      financialStats: getDefaultStats(),
-      businessStats: {
-        totalProducts: 0,
-        totalShops: 0,
-        totalCashiers: 0,
-        lowStockCount: 0,
-        activeCredits: 0
-      },
-      recentTransactions: [],
-      lowStockProducts: [],
-      topProducts: [],
-      shopPerformance: []
-    }));
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
+      // Process the data
+      const processedData = processDashboardData(data, shopsData);
+      
+      setDashboardData(prev => ({
+        ...processedData,
+        pendingVerifications: prev.pendingVerifications || []
+      }));
+      setDataTimestamp(new Date().toISOString());
+      
+      console.log('✅ Dashboard data processed successfully');
+      
+    } catch (error) {
+      console.error('💥 Dashboard fetch failed:', error);
+      message.error(error.message || 'Failed to load dashboard data');
+      
+      // Set default/empty data on error
+      setDashboardData(prev => ({
+        ...prev,
+        financialStats: getDefaultStats(),
+        businessStats: {
+          totalProducts: 0,
+          totalShops: 0,
+          totalCashiers: 0,
+          lowStockCount: 0,
+          activeCredits: 0
+        },
+        recentTransactions: [],
+        lowStockProducts: [],
+        topProducts: [],
+        shopPerformance: []
+      }));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   // Process dashboard data from API response
   const processDashboardData = (data, shops) => {
     const transactions = data?.salesWithProfit || data?.transactions || [];
@@ -372,19 +382,47 @@ const fetchDashboardData = async (customFilters = null) => {
       activeCredits: (credits || []).filter(c => c.status !== 'paid' && (c.balanceDue || 0) > 0).length
     };
 
+    // ENHANCED FINANCIAL STATS with all metrics
+    const totalRevenue = financialStats.totalRevenue || 0;
+    const totalSales = financialStats.totalSales || financialStats.totalRevenueCount || 0;
+    const costOfGoodsSold = financialStats.costOfGoodsSold || 0;
+    const grossProfit = financialStats.grossProfit || financialStats.totalProfit || 0;
+    const totalExpenses = financialStats.totalExpenses || 0;
+    const netProfit = financialStats.netProfit || 0;
+    const totalTransactions = financialStats.totalTransactions || totalSales || 0;
+    
+    // Calculate derived metrics
+    const averageTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+    const grossProfitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+    
+    // Credit metrics
+    const totalCreditGiven = financialStats.totalCreditGiven || 0;
+    const recognizedCreditRevenue = financialStats.recognizedCreditRevenue || 0;
+    const outstandingCredit = financialStats.outstandingCredit || 0;
+    const creditCollectionRate = totalCreditGiven > 0 ? (recognizedCreditRevenue / totalCreditGiven) * 100 : 0;
+
     const enhancedFinancialStats = {
-      totalRevenue: financialStats.totalRevenue || 0,
-      totalSales: financialStats.totalSales || financialStats.totalRevenueCount || 0,
-      netProfit: financialStats.netProfit || financialStats.totalProfit || 0,
-      outstandingCredit: financialStats.outstandingCredit || 0,
-      totalExpenses: financialStats.totalExpenses || 0,
-      grossProfit: financialStats.grossProfit || financialStats.totalProfit || 0,
+      totalRevenue,
+      totalSales,
+      netProfit,
+      outstandingCredit,
+      totalExpenses,
+      grossProfit,
       creditSales: financialStats.creditSales || 0,
       nonCreditSales: financialStats.nonCreditSales || 0,
       totalCash: financialStats.totalCash || 0,
       totalMpesaBank: financialStats.totalMpesaBank || 0,
-      profitMargin: financialStats.profitMargin || 0,
-      totalItemsSold: financialStats.totalItemsSold || 0
+      profitMargin,
+      totalItemsSold: financialStats.totalItemsSold || 0,
+      // NEW METRICS
+      costOfGoodsSold,
+      grossProfitMargin,
+      totalTransactions,
+      averageTransactionValue,
+      creditCollectionRate,
+      totalCreditGiven,
+      recognizedCreditRevenue
     };
 
     return {
@@ -409,7 +447,14 @@ const fetchDashboardData = async (customFilters = null) => {
     totalCash: 0,
     totalMpesaBank: 0,
     profitMargin: 0,
-    totalItemsSold: 0
+    totalItemsSold: 0,
+    costOfGoodsSold: 0,
+    grossProfitMargin: 0,
+    totalTransactions: 0,
+    averageTransactionValue: 0,
+    creditCollectionRate: 0,
+    totalCreditGiven: 0,
+    recognizedCreditRevenue: 0
   });
 
   const handleFilterChange = (key, value) => {
@@ -448,6 +493,12 @@ const fetchDashboardData = async (customFilters = null) => {
   const formatCurrency = (amount) => {
     if (amount === null || amount === undefined || isNaN(amount)) return 'KES 0';
     return `KES ${Number(amount).toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  };
+
+  // Format percentage
+  const formatPercentage = (value) => {
+    if (value === null || value === undefined || isNaN(value)) return '0%';
+    return `${Number(value).toFixed(1)}%`;
   };
 
   // Navigation handlers for menu items
@@ -598,6 +649,58 @@ const fetchDashboardData = async (customFilters = null) => {
 
   // Check if we're on a sub-page (not dashboard)
   const isSubPage = location.pathname !== '/admin/dashboard' && location.pathname !== '/admin';
+
+  // Financial Stat Card Component
+  const FinancialStatCard = ({ title, value, prefix = "KES", suffix, color, icon, description, type = 'currency' }) => {
+    const getColor = () => {
+      if (color) return color;
+      if (type === 'profit' && value > 0) return '#52c41a';
+      if (type === 'profit' && value < 0) return '#ff4d4f';
+      if (type === 'warning' && value > 0) return '#faad14';
+      if (type === 'percentage') return '#13c2c2';
+      return '#1890ff';
+    };
+
+    return (
+      <Col xs={24} sm={12} md={8} lg={6} xl={4}>
+        <Card 
+          size="small" 
+          style={{ 
+            background: 'linear-gradient(135deg, #1a2332 0%, #0f172a 100%)',
+            border: `1px solid ${getColor()}33`,
+            borderRadius: '8px',
+            textAlign: 'center',
+            height: '100%'
+          }}
+          bodyStyle={{ padding: '12px' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+            {icon && <span style={{ color: getColor(), marginRight: 8 }}>{icon}</span>}
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px', fontWeight: 'bold' }}>
+              {title}
+            </Text>
+          </div>
+          <Statistic
+            value={value}
+            prefix={prefix && type === 'currency' ? <Text style={{ color: 'white', fontSize: '10px' }}>KES</Text> : null}
+            suffix={suffix || (type === 'percentage' ? '%' : null)}
+            valueStyle={{ 
+              color: 'white',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+            }}
+            precision={type === 'percentage' ? 1 : type === 'currency' ? 0 : 0}
+          />
+          {description && (
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', display: 'block', marginTop: 2 }}>
+              {description}
+            </Text>
+          )}
+        </Card>
+      </Col>
+    );
+  };
 
   return (
     <Layout style={{ minHeight: '100vh', background: '#0F172A' }}>
@@ -841,7 +944,7 @@ const fetchDashboardData = async (customFilters = null) => {
                     </Col>
                   </Row>
 
-                  {/* Financial Overview */}
+                  {/* ENHANCED FINANCIAL OVERVIEW */}
                   <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                     <Col span={24}>
                       <Card 
@@ -849,6 +952,7 @@ const fetchDashboardData = async (customFilters = null) => {
                           <Space>
                             <LineChartOutlined style={{ color: '#6366F1', fontSize: '18px' }} />
                             <Text strong style={{ fontSize: '16px', color: 'white' }}>Financial Overview</Text>
+                            <Tag color="blue" style={{ marginLeft: 8 }}>COGS: {formatCurrency(dashboardData.financialStats.costOfGoodsSold)}</Tag>
                           </Space>
                         }
                         style={{ 
@@ -859,86 +963,203 @@ const fetchDashboardData = async (customFilters = null) => {
                         }}
                         bodyStyle={{ padding: '16px' }}
                       >
-                        <Row gutter={[16, 16]}>
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Revenue</Text>}
-                                value={dashboardData.financialStats.totalRevenue || 0} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
+                        {/* Row 1: Core Revenue Metrics */}
+                        <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
+                          <Col span={24}>
+                            <Divider orientation="left" style={{ color: '#6366F1', fontSize: '12px', margin: '4px 0' }}>
+                              <Text strong style={{ color: '#6366F1' }}>Revenue & Sales</Text>
+                            </Divider>
                           </Col>
-                          
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Sales</Text>}
-                                value={dashboardData.financialStats.totalSales || 0} 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Net Profit</Text>}
-                                value={dashboardData.financialStats.netProfit || 0} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Outstanding Credit</Text>}
-                                value={dashboardData.financialStats.outstandingCredit || 0} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
+                          <FinancialStatCard 
+                            title="Total Revenue" 
+                            value={dashboardData.financialStats.totalRevenue || 0}
+                            icon={<DollarOutlined />}
+                            description="All sales including credit"
+                          />
+                          <FinancialStatCard 
+                            title="Total Sales" 
+                            value={dashboardData.financialStats.totalSales || 0}
+                            icon={<ShoppingCartOutlined />}
+                            type="number"
+                            description="Number of transactions"
+                          />
+                          <FinancialStatCard 
+                            title="Total Transactions" 
+                            value={dashboardData.financialStats.totalTransactions || 0}
+                            icon={<BarChartOutlined />}
+                            type="number"
+                            description="Sales count"
+                          />
+                          <FinancialStatCard 
+                            title="Avg Transaction" 
+                            value={dashboardData.financialStats.averageTransactionValue || 0}
+                            icon={<CalculatorOutlined />}
+                            description="Revenue per sale"
+                          />
                         </Row>
+
+                        {/* Row 2: Cost & Profit Metrics */}
+                        <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
+                          <Col span={24}>
+                            <Divider orientation="left" style={{ color: '#52c41a', fontSize: '12px', margin: '4px 0' }}>
+                              <Text strong style={{ color: '#52c41a' }}>Cost & Profit</Text>
+                            </Divider>
+                          </Col>
+                          <FinancialStatCard 
+                            title="Cost of Goods Sold" 
+                            value={dashboardData.financialStats.costOfGoodsSold || 0}
+                            icon={<StockOutlined />}
+                            color="#faad14"
+                            description="Direct inventory cost"
+                          />
+                          <FinancialStatCard 
+                            title="Gross Profit" 
+                            value={dashboardData.financialStats.grossProfit || 0}
+                            icon={<RiseOutlined />}
+                            color="#52c41a"
+                            type="profit"
+                            description="Revenue - COGS"
+                          />
+                          <FinancialStatCard 
+                            title="Total Expenses" 
+                            value={dashboardData.financialStats.totalExpenses || 0}
+                            icon={<WalletOutlined />}
+                            color="#ff4d4f"
+                            description="Operating costs"
+                          />
+                          <FinancialStatCard 
+                            title="Net Profit" 
+                            value={dashboardData.financialStats.netProfit || 0}
+                            icon={<RiseOutlined />}
+                            color={dashboardData.financialStats.netProfit >= 0 ? '#52c41a' : '#ff4d4f'}
+                            type="profit"
+                            description="After all expenses"
+                          />
+                        </Row>
+
+                        {/* Row 3: Profitability Ratios */}
+                        <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
+                          <Col span={24}>
+                            <Divider orientation="left" style={{ color: '#13c2c2', fontSize: '12px', margin: '4px 0' }}>
+                              <Text strong style={{ color: '#13c2c2' }}>Profitability Ratios</Text>
+                            </Divider>
+                          </Col>
+                          <FinancialStatCard 
+                            title="Profit Margin" 
+                            value={dashboardData.financialStats.profitMargin || 0}
+                            icon={<PercentageOutlined />}
+                            type="percentage"
+                            color="#13c2c2"
+                            description="Net profit percentage"
+                          />
+                          <FinancialStatCard 
+                            title="Gross Margin" 
+                            value={dashboardData.financialStats.grossProfitMargin || 0}
+                            icon={<PercentageOutlined />}
+                            type="percentage"
+                            color="#52c41a"
+                            description="Gross profit percentage"
+                          />
+                          <FinancialStatCard 
+                            title="Credit Collection" 
+                            value={dashboardData.financialStats.creditCollectionRate || 0}
+                            icon={<PercentageOutlined />}
+                            type="percentage"
+                            color="#faad14"
+                            description="Credit recovery rate"
+                          />
+                          <FinancialStatCard 
+                            title="Items Sold" 
+                            value={dashboardData.financialStats.totalItemsSold || 0}
+                            icon={<ProductOutlined />}
+                            type="number"
+                            color="#1890ff"
+                            description="Total quantity sold"
+                          />
+                        </Row>
+
+                        {/* Row 4: Payment & Credit Breakdown */}
+                        <Row gutter={[16, 16]}>
+                          <Col span={24}>
+                            <Divider orientation="left" style={{ color: '#9b59b6', fontSize: '12px', margin: '4px 0' }}>
+                              <Text strong style={{ color: '#9b59b6' }}>Payment & Credit Breakdown</Text>
+                            </Divider>
+                          </Col>
+                          <FinancialStatCard 
+                            title="Cash Collected" 
+                            value={dashboardData.financialStats.totalCash || 0}
+                            icon={<DollarOutlined />}
+                            color="#52c41a"
+                            description="Cash payments"
+                          />
+                          <FinancialStatCard 
+                            title="Bank/M-Pesa" 
+                            value={dashboardData.financialStats.totalMpesaBank || 0}
+                            icon={<CreditCardOutlined />}
+                            color="#1890ff"
+                            description="Digital payments"
+                          />
+                          <FinancialStatCard 
+                            title="Total Credit Given" 
+                            value={dashboardData.financialStats.totalCreditGiven || 0}
+                            icon={<CreditCardOutlined />}
+                            color="#faad14"
+                            description="Credit extended"
+                          />
+                          <FinancialStatCard 
+                            title="Recognized Credit" 
+                            value={dashboardData.financialStats.recognizedCreditRevenue || 0}
+                            icon={<CheckCircleOutlined />}
+                            color="#52c41a"
+                            description="Credit collected"
+                          />
+                          <FinancialStatCard 
+                            title="Outstanding Credit" 
+                            value={dashboardData.financialStats.outstandingCredit || 0}
+                            icon={<WarningOutlined />}
+                            color="#ff4d4f"
+                            description="Unpaid balance"
+                          />
+                          <FinancialStatCard 
+                            title="Credit Sales" 
+                            value={dashboardData.financialStats.creditSales || 0}
+                            icon={<CreditCardOutlined />}
+                            color="#faad14"
+                            description="Credit transactions"
+                          />
+                        </Row>
+
+                        {/* Summary Bar */}
+                        <div style={{ 
+                          marginTop: 16, 
+                          padding: '12px 16px', 
+                          background: 'rgba(99, 102, 241, 0.1)', 
+                          borderRadius: '6px',
+                          border: '1px solid rgba(99, 102, 241, 0.2)'
+                        }}>
+                          <Row gutter={[16, 16]} align="middle">
+                            <Col xs={24} sm={12}>
+                              <Space>
+                                <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Summary:</Text>
+                                <Tag color="green">Revenue: {formatCurrency(dashboardData.financialStats.totalRevenue)}</Tag>
+                                <Tag color="orange">COGS: {formatCurrency(dashboardData.financialStats.costOfGoodsSold)}</Tag>
+                                <Tag color="blue">Gross Profit: {formatCurrency(dashboardData.financialStats.grossProfit)}</Tag>
+                                <Tag color={dashboardData.financialStats.netProfit >= 0 ? 'green' : 'red'}>
+                                  Net Profit: {formatCurrency(dashboardData.financialStats.netProfit)}
+                                </Tag>
+                              </Space>
+                            </Col>
+                            <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
+                              <Space>
+                                <Tag color="purple">Margin: {formatPercentage(dashboardData.financialStats.profitMargin)}</Tag>
+                                <Tag color="cyan">Gross Margin: {formatPercentage(dashboardData.financialStats.grossProfitMargin)}</Tag>
+                                {dashboardData.financialStats.outstandingCredit > 0 && (
+                                  <Tag color="red">⚠️ Outstanding: {formatCurrency(dashboardData.financialStats.outstandingCredit)}</Tag>
+                                )}
+                              </Space>
+                            </Col>
+                          </Row>
+                        </div>
                       </Card>
                     </Col>
                   </Row>
