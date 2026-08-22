@@ -1,4 +1,4 @@
-// src/pages/Cashier/ShopSelection.jsx - UPDATED MUI VERSION
+// src/pages/Cashier/ShopSelection.jsx - Without Device Verification
 import React, { useState, useEffect } from 'react';
 import {
   Container,
@@ -23,7 +23,7 @@ import {
   CheckCircle,
   Warning
 } from '@mui/icons-material';
-import { shopAPI, authAPI } from '../../services/api';
+import { shopAPI } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const ShopSelection = () => {
@@ -176,13 +176,16 @@ const ShopSelection = () => {
 
   const handleLogout = () => {
     try {
-      authAPI.logout();
       localStorage.removeItem('cashierData');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       navigate('/cashier/login', { replace: true });
     } catch (error) {
       console.error('Logout error:', error);
       // Force logout even if API fails
       localStorage.removeItem('cashierData');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       navigate('/cashier/login', { replace: true });
     }
   };
