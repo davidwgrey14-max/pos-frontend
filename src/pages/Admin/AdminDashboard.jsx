@@ -1,5 +1,5 @@
-// src/pages/Admin/AdminDashboard.jsx - Fixed Path Matching
-import React, { useState, useEffect } from 'react';
+// src/pages/Admin/AdminDashboard.jsx - Fixed Navigation
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
   Button, Modal, Space, Tooltip, message, Badge, Avatar,
@@ -25,21 +25,24 @@ import {
   SearchOutlined,
   FilterOutlined,
   SafetyOutlined,
-  TeamOutlined
+  TeamOutlined,
+  SettingOutlined,
+  FileTextOutlined,
+  PlusOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
 import { unifiedAPI, shopAPI, authAPI } from '../../services/api';
 
-// Import sub-pages
-import ProductManagement from './ProductManagement';
-import ShopManagement from './ShopManagement';
-import CashierManagement from './CashierManagement';
-import CreditManagement from './CreditManagement';
-import DeviceVerification from './DeviceVerification';
-import ExpenseManagement from './ExpenseManagement';
-import Inventory from './Inventory';
-import TransactionReports from './TransactionReports';
+// Lazy load sub-pages for better performance
+const ProductManagement = lazy(() => import('./ProductManagement'));
+const ShopManagement = lazy(() => import('./ShopManagement'));
+const CashierManagement = lazy(() => import('./CashierManagement'));
+const CreditManagement = lazy(() => import('./CreditManagement'));
+const DeviceVerification = lazy(() => import('./DeviceVerification'));
+const ExpenseManagement = lazy(() => import('./ExpenseManagement'));
+const Inventory = lazy(() => import('./Inventory'));
+const TransactionReports = lazy(() => import('./TransactionReports'));
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -92,56 +95,13 @@ const AdminDashboard = () => {
     pendingVerifications: []
   });
 
-  // Get the current page from path - FIXED
-  const getCurrentPage = () => {
+  // Get the current page name from path
+  const getPageName = () => {
     const path = location.pathname;
-    // Remove /admin/ prefix and get the page name
-    const page = path.replace('/admin/', '').split('/')[0] || 'dashboard';
-    return page;
-  };
-
-  // Check if we're on dashboard page
-  const isDashboardPage = () => {
-    const page = getCurrentPage();
-    return page === 'dashboard' || page === 'admin' || page === '';
-  };
-
-  // Get selected menu key - FIXED
-  const getSelectedKey = () => {
-    const page = getCurrentPage();
+    const page = path.split('/').pop();
     switch (page) {
       case 'dashboard':
       case 'admin':
-      case '':
-        return 'dashboard';
-      case 'products':
-        return 'products';
-      case 'shops':
-        return 'shops';
-      case 'cashiers':
-        return 'cashiers';
-      case 'transactions':
-        return 'transactions';
-      case 'expenses':
-        return 'expenses';
-      case 'inventory':
-        return 'inventory';
-      case 'credits':
-        return 'credits';
-      case 'verify-device':
-        return 'verify-device';
-      default:
-        return 'dashboard';
-    }
-  };
-
-  // Get page display name
-  const getPageDisplayName = () => {
-    const page = getCurrentPage();
-    switch (page) {
-      case 'dashboard':
-      case 'admin':
-      case '':
         return 'DASHBOARD';
       case 'products':
         return 'PRODUCTS';
@@ -162,6 +122,27 @@ const AdminDashboard = () => {
       default:
         return 'ADMIN';
     }
+  };
+
+  // Get current selected menu key based on path
+  const getSelectedKey = () => {
+    const path = location.pathname;
+    if (path.includes('/admin/dashboard') || path === '/admin') return 'dashboard';
+    if (path.includes('/admin/products')) return 'products';
+    if (path.includes('/admin/shops')) return 'shops';
+    if (path.includes('/admin/cashiers')) return 'cashiers';
+    if (path.includes('/admin/transactions')) return 'transactions';
+    if (path.includes('/admin/expenses')) return 'expenses';
+    if (path.includes('/admin/inventory')) return 'inventory';
+    if (path.includes('/admin/credits')) return 'credits';
+    if (path.includes('/admin/verify-device')) return 'verify-device';
+    return 'dashboard';
+  };
+
+  // Check if we're on dashboard page
+  const isDashboardPage = () => {
+    const path = location.pathname;
+    return path === '/admin/dashboard' || path === '/admin';
   };
 
   // User menu items
@@ -236,6 +217,7 @@ const AdminDashboard = () => {
     };
   }, [filters.autoRefresh, location.pathname]);
 
+  // Fetch pending verifications for admin
   const fetchPendingVerifications = async () => {
     try {
       const response = await authAPI.getVerificationRequests();
@@ -250,6 +232,7 @@ const AdminDashboard = () => {
     }
   };
 
+  // Fetch dashboard data from backend
   const fetchDashboardData = async (customFilters = null) => {
     const activeFilters = customFilters || filters;
     
@@ -321,6 +304,7 @@ const AdminDashboard = () => {
     }
   };
 
+  // Process dashboard data from API response
   const processDashboardData = (data, shops) => {
     const transactions = data?.salesWithProfit || data?.transactions || [];
     const financialStats = data?.financialStats || data?.summary || data?.financialStats || getDefaultStats();
@@ -497,7 +481,6 @@ const AdminDashboard = () => {
 
   // Navigation handlers for menu items
   const handleMenuClick = ({ key }) => {
-    console.log('🔍 Menu clicked:', key);
     switch (key) {
       case 'dashboard':
         navigate('/admin/dashboard');
@@ -531,7 +514,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // Table columns for dashboard
+  // Table columns
   const salesColumns = [
     { 
       title: 'Transaction', 
@@ -583,7 +566,7 @@ const AdminDashboard = () => {
     { title: 'Min Level', dataIndex: 'minStockLevel', key: 'minStockLevel', render: (val) => val || 5 }
   ];
 
-  // Menu items for sidebar
+  // Menu items for sidebar with navigation
   const menuItems = [
     { 
       key: 'dashboard', 
@@ -642,38 +625,33 @@ const AdminDashboard = () => {
     }
   ];
 
-  // Render the appropriate page content based on route - FIXED
+  // Render the appropriate page content based on route
   const renderContent = () => {
-    const page = getCurrentPage();
-    console.log('📄 Current page:', page);
+    const path = location.pathname;
     
     // Dashboard page
-    if (page === 'dashboard' || page === 'admin' || page === '') {
+    if (path === '/admin/dashboard' || path === '/admin') {
       return renderDashboard();
     }
     
-    // Sub-pages
-    switch (page) {
-      case 'products':
-        return <ProductManagement />;
-      case 'shops':
-        return <ShopManagement />;
-      case 'cashiers':
-        return <CashierManagement />;
-      case 'transactions':
-        return <TransactionReports />;
-      case 'expenses':
-        return <ExpenseManagement />;
-      case 'inventory':
-        return <Inventory />;
-      case 'credits':
-        return <CreditManagement />;
-      case 'verify-device':
-        return <DeviceVerification />;
-      default:
-        console.warn('⚠️ Unknown page:', page);
-        return renderDashboard();
-    }
+    // Sub-pages - use lazy loaded components
+    return (
+      <Suspense fallback={
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16, color: 'rgba(255,255,255,0.7)' }}>Loading page...</div>
+        </div>
+      }>
+        {path.includes('/admin/products') && <ProductManagement />}
+        {path.includes('/admin/shops') && <ShopManagement />}
+        {path.includes('/admin/cashiers') && <CashierManagement />}
+        {path.includes('/admin/transactions') && <TransactionReports />}
+        {path.includes('/admin/expenses') && <ExpenseManagement />}
+        {path.includes('/admin/inventory') && <Inventory />}
+        {path.includes('/admin/credits') && <CreditManagement />}
+        {path.includes('/admin/verify-device') && <DeviceVerification />}
+      </Suspense>
+    );
   };
 
   // Render dashboard content
@@ -1209,7 +1187,7 @@ const AdminDashboard = () => {
           zIndex: 1000
         }}>
           <Title level={4} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
-            PAMELA - {getPageDisplayName()}
+            PAMELA - {getPageName()}
           </Title>
           <Space>
             {timeRemaining !== undefined && (
