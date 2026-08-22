@@ -189,6 +189,7 @@ const AdminDashboard = () => {
 
 
   // Fetch dashboard data from backend
+// Fetch dashboard data from backend
 const fetchDashboardData = async (customFilters = null) => {
   const activeFilters = customFilters || filters;
   
@@ -218,24 +219,26 @@ const fetchDashboardData = async (customFilters = null) => {
     const response = await unifiedAPI.getCombinedTransactions(params);
     console.log('📊 Combined data response:', response);
     
-    // === FIXED: Extract data from response ===
-    // === FIXED: Extract data from response ===
-let data = {};
-if (response) {
-  // Check if response has a success property
-  if (response.success === true) {
-    data = response.data || response;
-  } else if (response.success === false) {
-    console.error('API returned error:', response.message);
-    throw new Error(response.message || 'Failed to fetch data');
-  } else {
-    // No success property OR success is undefined/null - assume the response itself is the data
-    data = response;
-  }
-} else {
-  // Response is null/undefined
-  data = {};
-}
+    // ✅ FIXED: Handle response properly
+    let data = {};
+    
+    if (!response) {
+      throw new Error('No response received from server');
+    }
+    
+    // Check if response has a success property
+    if (response.success === true) {
+      // Standard API success response
+      data = response.data || response;
+    } else if (response.success === false) {
+      // API returned error
+      console.error('API returned error:', response.message);
+      throw new Error(response.message || 'Failed to fetch data');
+    } else {
+      // No success property - use response directly as data
+      data = response;
+    }
+
     // Process the data
     const processedData = processDashboardData(data, shopsData);
     
@@ -272,7 +275,6 @@ if (response) {
     setRefreshing(false);
   }
 };
-
   // Process dashboard data from API response
   const processDashboardData = (data, shops) => {
     const transactions = data?.salesWithProfit || data?.transactions || [];
