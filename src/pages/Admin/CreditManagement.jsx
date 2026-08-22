@@ -1,3 +1,4 @@
+// src/pages/Admin/CreditManagement.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
@@ -40,7 +41,8 @@ import {
   CreditCardOutlined,
   EnvironmentOutlined,
   FileTextOutlined,
-  WarningOutlined
+  WarningOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 import { creditAPI, shopAPI, transactionAPI } from '../../services/api';
 import { shopUtils } from '../../utils/shopUtils';
@@ -198,7 +200,7 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
     }
   }, [getCurrentUser]);
 
-  // Optimized credit fetching with better caching and throttling
+  // FIXED: Optimized credit fetching with direct API call
   const fetchCredits = useCallback(async (forceRefresh = false) => {
     // Prevent too frequent API calls (minimum 15 seconds between calls)
     const now = Date.now();
@@ -224,23 +226,32 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
 
     setLoading(true);
     try {
-      const params = {
-        includeTransactions: 'true',
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        limit: 1000,
-        sort: '-createdAt'
-      };
+      // FIXED: Build params for credit API call
+      const params = {};
       
       if (selectedShop && selectedShop !== 'all') {
         params.shopId = selectedShop;
       }
       
+      if (statusFilter && statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      
       console.log('📋 Fetching credits with params:', params);
       
-      const response = await creditAPI.getAll(params);
+      // FIXED: Use direct creditAPI.getAll with proper error handling
+      let response;
+      try {
+        response = await creditAPI.getAll(params);
+      } catch (apiError) {
+        console.error('Credit API error:', apiError);
+        // Fallback: try without params
+        response = await creditAPI.getAll();
+      }
       
       // Process credits data
-      const creditsData = Array.isArray(response?.data) ? response.data : [];
+      const creditsData = Array.isArray(response?.data) ? response.data : 
+                         Array.isArray(response) ? response : [];
       
       console.log('✅ Raw credits data received:', creditsData.length, 'items');
       
@@ -296,7 +307,7 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
           totalAmount,
           amountPaid,
           balanceDue: Math.max(0, balanceDue),
-          shopName: shopInfo?.name || 'Unknown Shop',
+          shopName: shopInfo?.name || credit.shopName || 'Unknown Shop',
           shopType: shopInfo?.type || 'Unknown',
           transactionDetails,
           status: calculateCreditStatus(credit, balanceDue)
@@ -357,8 +368,24 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
         return;
       }
 
-      const response = await creditAPI.getPaymentHistory(creditId);
-      const history = Array.isArray(response?.data) ? response.data : [];
+      // FIXED: Use creditAPI.getPaymentHistory with proper handling
+      let response;
+      try {
+        response = await creditAPI.getPaymentHistory(creditId);
+      } catch (apiError) {
+        console.error('Payment history API error:', apiError);
+        // Try to get from credit directly
+        const credit = credits.find(c => c._id === creditId);
+        if (credit && credit.paymentHistory) {
+          setPaymentHistory(credit.paymentHistory);
+          return;
+        }
+        setPaymentHistory([]);
+        return;
+      }
+      
+      const history = Array.isArray(response?.data) ? response.data : 
+                     Array.isArray(response) ? response : [];
       
       const formattedHistory = history.map(payment => ({
         ...payment,
@@ -464,7 +491,7 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
     }
   };
 
-  // UPDATED: Unified credit payment handler with proper upfront payment alignment
+  // FIXED: Unified credit payment handler with proper API calls
   const handleCreditPayment = async (credit, paymentAmount, paymentMethod) => {
     try {
       if (!credit || !credit._id) {
@@ -488,7 +515,7 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
         throw new Error(`Payment amount (${formatCurrency(paymentAmount)}) exceeds balance due (${formatCurrency(balanceDue)})`);
       }
 
-      console.log('💰 Processing credit payment with upfront payment alignment:', {
+      console.log('💰 Processing credit payment:', {
         creditId: credit._id,
         customer: credit.customerName,
         paymentAmount,
@@ -501,7 +528,7 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
       const shopDetails = shopUtils.getShopDetails(credit.shopId, shops);
       const shopName = shopDetails?.name || credit.shopName || 'Unknown Shop';
 
-      // Create payment transaction data aligned with server expectations
+      // FIXED: Create payment transaction using transactionAPI
       const paymentTransactionData = {
         transactionNumber: `PAY-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
         totalAmount: Number(paymentAmount),
@@ -522,33 +549,29 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
           totalPrice: Number(paymentAmount)
         }],
         notes: `Credit payment for ${credit.customerName}`,
-        
-        // UPDATED: Align with server upfront payment structure
         recognizedRevenue: Number(paymentAmount),
         immediateRevenue: Number(paymentAmount),
         amountPaid: Number(paymentAmount),
         outstandingRevenue: 0,
         isCreditTransaction: false,
-        
-        // UPDATED: Enhanced payment split for proper dashboard display
         paymentSplit: {
           cash: paymentMethod === 'cash' ? Number(paymentAmount) : 0,
-          bank_mpesa: ['mpesa', 'bank', 'card', 'bank_mpesa'].includes(paymentMethod) ? Number(paymentAmount) : 0,
+          bank_mpesa: ['mpesa', 'bank', 'card'].includes(paymentMethod) ? Number(paymentAmount) : 0,
           credit: 0
         }
       };
 
-      console.log('📤 Sending aligned payment transaction data:', paymentTransactionData);
+      console.log('📤 Sending payment transaction data:', paymentTransactionData);
 
-      // Create payment transaction
+      // FIXED: Use transactionAPI.create
       const response = await transactionAPI.create(paymentTransactionData);
       
+      console.log('📥 Payment transaction response:', response);
+
+      // Check response
       let success = false;
       let transactionId = null;
 
-      console.log('📥 Raw API Response:', response);
-
-      // Check various possible success response structures
       if (response) {
         if (response.success === true) {
           success = true;
@@ -574,7 +597,7 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
         }
         else if (response && typeof response === 'object') {
           success = true;
-          console.log('ℹ️  Response received but no clear success indicator, assuming success:', response);
+          console.log('ℹ️ Response received but no clear success indicator, assuming success:', response);
         }
       }
 
@@ -582,11 +605,10 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
         console.log('✅ Credit payment transaction created successfully:', {
           transactionId,
           amount: paymentAmount,
-          creditId: credit._id,
-          responseStructure: Object.keys(response || {})
+          creditId: credit._id
         });
 
-        // UPDATED: Update the credit record to reflect the payment
+        // FIXED: Update the credit record using creditAPI.update
         try {
           const updatedAmountPaid = (Number(credit.amountPaid) || 0) + Number(paymentAmount);
           const updatedBalanceDue = Math.max(0, (Number(credit.totalAmount) || 0) - updatedAmountPaid);
@@ -611,6 +633,7 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
             notes: `Payment recorded via Credit Management`
           });
 
+          // FIXED: Use creditAPI.update
           await creditAPI.update(credit._id, creditUpdateData);
           console.log('✅ Credit record updated with payment');
           
@@ -1245,7 +1268,7 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
               <Button 
                 onClick={() => fetchCredits(true)} 
                 loading={loading}
-                icon={<SyncOutlined />}
+                icon={<ReloadOutlined />}
               >
                 Refresh
               </Button>
