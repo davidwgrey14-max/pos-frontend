@@ -490,201 +490,211 @@ const CreditManagement = ({ currentUser, shops: initialShops = [], onPaymentSucc
       console.error('Error recording payment:', error);
     }
   };
-
-  // FIXED: Unified credit payment handler with proper API calls
-  const handleCreditPayment = async (credit, paymentAmount, paymentMethod) => {
-    try {
-      if (!credit || !credit._id) {
-        throw new Error('Invalid credit record');
-      }
-
-      const user = getCurrentUser();
-      
-      // Enhanced validation
-      if (!paymentAmount || paymentAmount <= 0) {
-        throw new Error('Invalid payment amount');
-      }
-
-      if (!paymentMethod) {
-        throw new Error('Payment method is required');
-      }
-
-      // Validate payment doesn't exceed balance
-      const balanceDue = Number(credit.balanceDue) || 0;
-      if (paymentAmount > balanceDue) {
-        throw new Error(`Payment amount (${formatCurrency(paymentAmount)}) exceeds balance due (${formatCurrency(balanceDue)})`);
-      }
-
-      console.log('💰 Processing credit payment:', {
-        creditId: credit._id,
-        customer: credit.customerName,
-        paymentAmount,
-        paymentMethod,
-        balanceDue,
-        originalTotal: credit.totalAmount
-      });
-
-      // Get shop details
-      const shopDetails = shopUtils.getShopDetails(credit.shopId, shops);
-      const shopName = shopDetails?.name || credit.shopName || 'Unknown Shop';
-
-      // FIXED: Create payment transaction using transactionAPI
-      const paymentTransactionData = {
-        transactionNumber: `PAY-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-        totalAmount: Number(paymentAmount),
-        paymentMethod: paymentMethod,
-        customerName: credit.customerName || 'Unknown Customer',
-        shopName: shopName,
-        shopId: credit.shopId,
-        cashierId: user._id,
-        cashierName: user.name || 'System',
-        saleDate: new Date().toISOString(),
-        isCreditPayment: true,
-        originalCreditId: credit._id,
-        status: 'completed',
-        items: [{
-          productName: `Credit Payment - ${credit.customerName}`,
-          quantity: 1,
-          price: Number(paymentAmount),
-          totalPrice: Number(paymentAmount)
-        }],
-        notes: `Credit payment for ${credit.customerName}`,
-        recognizedRevenue: Number(paymentAmount),
-        immediateRevenue: Number(paymentAmount),
-        amountPaid: Number(paymentAmount),
-        outstandingRevenue: 0,
-        isCreditTransaction: false,
-        paymentSplit: {
-          cash: paymentMethod === 'cash' ? Number(paymentAmount) : 0,
-          bank_mpesa: ['mpesa', 'bank', 'card'].includes(paymentMethod) ? Number(paymentAmount) : 0,
-          credit: 0
-        }
-      };
-
-      console.log('📤 Sending payment transaction data:', paymentTransactionData);
-
-      // FIXED: Use transactionAPI.create
-      const response = await transactionAPI.create(paymentTransactionData);
-      
-      console.log('📥 Payment transaction response:', response);
-
-      // Check response
-      let success = false;
-      let transactionId = null;
-
-      if (response) {
-        if (response.success === true) {
-          success = true;
-          if (response.data) {
-            if (response.data._id) {
-              transactionId = response.data._id;
-            } else if (response.data.paymentTransaction && response.data.paymentTransaction._id) {
-              transactionId = response.data.paymentTransaction._id;
-            }
-          }
-        }
-        else if (response._id) {
-          success = true;
-          transactionId = response._id;
-        }
-        else if (response.paymentTransaction && response.paymentTransaction._id) {
-          success = true;
-          transactionId = response.paymentTransaction._id;
-        }
-        else if (response.data && (response.data._id || response.data.success)) {
-          success = true;
-          transactionId = response.data._id;
-        }
-        else if (response && typeof response === 'object') {
-          success = true;
-          console.log('ℹ️ Response received but no clear success indicator, assuming success:', response);
-        }
-      }
-
-      if (success) {
-        console.log('✅ Credit payment transaction created successfully:', {
-          transactionId,
-          amount: paymentAmount,
-          creditId: credit._id
-        });
-
-        // FIXED: Update the credit record using creditAPI.update
-        try {
-          const updatedAmountPaid = (Number(credit.amountPaid) || 0) + Number(paymentAmount);
-          const updatedBalanceDue = Math.max(0, (Number(credit.totalAmount) || 0) - updatedAmountPaid);
-          
-          const creditUpdateData = {
-            amountPaid: updatedAmountPaid,
-            balanceDue: updatedBalanceDue,
-            status: updatedBalanceDue <= 0 ? 'paid' : (updatedAmountPaid > 0 ? 'partially_paid' : 'pending')
-          };
-
-          // Add to payment history
-          if (!credit.paymentHistory) {
-            creditUpdateData.paymentHistory = [];
-          }
-          
-          creditUpdateData.paymentHistory.push({
-            amount: Number(paymentAmount),
-            paymentDate: new Date().toISOString(),
-            paymentMethod: paymentMethod,
-            recordedBy: user.name || 'System',
-            cashierName: user.name || 'System',
-            notes: `Payment recorded via Credit Management`
-          });
-
-          // FIXED: Use creditAPI.update
-          await creditAPI.update(credit._id, creditUpdateData);
-          console.log('✅ Credit record updated with payment');
-          
-        } catch (updateError) {
-          console.error('⚠️ Could not update credit record, but payment was recorded:', updateError);
-          // Continue since the payment transaction was successful
-        }
-
-        notification.success({
-          message: 'Credit Payment Recorded',
-          description: `Payment of ${formatCurrency(paymentAmount)} recorded successfully.`,
-        });
-        
-        // Refresh credits to show updated balances
-        fetchCredits(true); // Force refresh
-        if (onPaymentSuccess) {
-          onPaymentSuccess();
-        }
-        
-        return true;
-      } else {
-        console.error('❌ Unexpected response structure:', response);
-        throw new Error(response?.message || 'Unexpected response from server');
-      }
-    } catch (error) {
-      console.error('❌ ERROR processing credit payment:', error);
-      
-      let userMessage = 'Payment failed due to server error';
-      
-      if (error.response?.status === 500) {
-        const serverError = error.response?.data;
-        console.error('🔍 Server error details:', serverError);
-        userMessage = serverError?.error || serverError?.message || 'Server error while processing payment';
-      } else if (error.response?.status === 400) {
-        userMessage = error.response?.data?.message || 'Invalid payment data provided';
-      } else if (error.response?.status === 404) {
-        userMessage = 'Payment service unavailable. Please try again.';
-      } else if (error.message) {
-        userMessage = error.message;
-      }
-      
-      notification.error({
-        message: 'Payment Failed',
-        description: userMessage,
-        duration: 8,
-      });
-      
-      throw error;
+// FIXED: Unified credit payment handler with proper API calls
+const handleCreditPayment = async (credit, paymentAmount, paymentMethod) => {
+  try {
+    if (!credit || !credit._id) {
+      throw new Error('Invalid credit record');
     }
-  };
 
+    const user = getCurrentUser();
+    
+    // Enhanced validation
+    if (!paymentAmount || paymentAmount <= 0) {
+      throw new Error('Invalid payment amount');
+    }
+
+    if (!paymentMethod) {
+      throw new Error('Payment method is required');
+    }
+
+    // Validate payment doesn't exceed balance
+    const balanceDue = Number(credit.balanceDue) || 0;
+    if (paymentAmount > balanceDue) {
+      throw new Error(`Payment amount (${formatCurrency(paymentAmount)}) exceeds balance due (${formatCurrency(balanceDue)})`);
+    }
+
+    console.log('💰 Processing credit payment:', {
+      creditId: credit._id,
+      customer: credit.customerName,
+      paymentAmount,
+      paymentMethod,
+      balanceDue,
+      originalTotal: credit.totalAmount
+    });
+
+    // Get shop details
+    const shopDetails = shopUtils.getShopDetails(credit.shopId, shops);
+    const shopName = shopDetails?.name || credit.shopName || 'Unknown Shop';
+
+    // Create payment transaction using transactionAPI
+    const paymentTransactionData = {
+      transactionNumber: `PAY-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      totalAmount: Number(paymentAmount),
+      paymentMethod: paymentMethod,
+      customerName: credit.customerName || 'Unknown Customer',
+      shopName: shopName,
+      shopId: credit.shopId,
+      cashierId: user._id,
+      cashierName: user.name || 'System',
+      saleDate: new Date().toISOString(),
+      isCreditPayment: true,
+      originalCreditId: credit._id,
+      status: 'completed',
+      items: [{
+        productName: `Credit Payment - ${credit.customerName}`,
+        quantity: 1,
+        price: Number(paymentAmount),
+        totalPrice: Number(paymentAmount)
+      }],
+      notes: `Credit payment for ${credit.customerName}`,
+      recognizedRevenue: Number(paymentAmount),
+      immediateRevenue: Number(paymentAmount),
+      amountPaid: Number(paymentAmount),
+      outstandingRevenue: 0,
+      isCreditTransaction: false,
+      paymentSplit: {
+        cash: paymentMethod === 'cash' ? Number(paymentAmount) : 0,
+        bank_mpesa: ['mpesa', 'bank', 'card'].includes(paymentMethod) ? Number(paymentAmount) : 0,
+        credit: 0
+      }
+    };
+
+    console.log('📤 Sending payment transaction data:', paymentTransactionData);
+
+    // Create the payment transaction
+    const response = await transactionAPI.create(paymentTransactionData);
+    
+    console.log('📥 Payment transaction response:', response);
+
+    // Check response
+    let success = false;
+    let transactionId = null;
+
+    if (response) {
+      if (response.success === true) {
+        success = true;
+        if (response.data) {
+          if (response.data._id) {
+            transactionId = response.data._id;
+          } else if (response.data.paymentTransaction && response.data.paymentTransaction._id) {
+            transactionId = response.data.paymentTransaction._id;
+          }
+        }
+      }
+      else if (response._id) {
+        success = true;
+        transactionId = response._id;
+      }
+      else if (response.paymentTransaction && response.paymentTransaction._id) {
+        success = true;
+        transactionId = response.paymentTransaction._id;
+      }
+      else if (response.data && (response.data._id || response.data.success)) {
+        success = true;
+        transactionId = response.data._id;
+      }
+      else if (response && typeof response === 'object') {
+        success = true;
+        console.log('ℹ️ Response received but no clear success indicator, assuming success:', response);
+      }
+    }
+
+    if (success) {
+      console.log('✅ Credit payment transaction created successfully:', {
+        transactionId,
+        amount: paymentAmount,
+        creditId: credit._id
+      });
+
+      // FIXED: Update the credit record with proper payment history handling
+      try {
+        const updatedAmountPaid = (Number(credit.amountPaid) || 0) + Number(paymentAmount);
+        const updatedBalanceDue = Math.max(0, (Number(credit.totalAmount) || 0) - updatedAmountPaid);
+        
+        // FIXED: Ensure paymentHistory exists before pushing
+        let paymentHistory = credit.paymentHistory || [];
+        
+        // Create new payment record
+        const newPayment = {
+  amount: Number(paymentAmount),
+  paymentDate: new Date().toISOString(),
+  paymentMethod: paymentMethod,
+  recordedBy: user.name || 'System',
+  cashierName: user.name || 'System',
+  notes: `Payment recorded via Credit Management`
+};
+paymentHistory.push(newPayment);
+        
+        // Add to payment history
+        paymentHistory.push(newPayment);
+        
+     const creditUpdateData = {
+  amountPaid: updatedAmountPaid,
+  balanceDue: updatedBalanceDue,
+  status: updatedBalanceDue <= 0 ? 'paid' : (updatedAmountPaid > 0 ? 'partially_paid' : 'pending'),
+  paymentHistory: paymentHistory // Include the full payment history
+};
+
+        console.log('📤 Updating credit with payment history:', creditUpdateData);
+
+        // Update the credit record
+        await creditAPI.update(credit._id, creditUpdateData);
+        console.log('✅ Credit record updated with payment');
+        
+      } catch (updateError) {
+        console.error('⚠️ Could not update credit record, but payment was recorded:', updateError);
+        // Continue since the payment transaction was successful
+        // Show a warning but don't fail the operation
+        notification.warning({
+          message: 'Payment Recorded but Credit Not Updated',
+          description: 'The payment was successful but the credit record could not be updated. Please refresh the page.',
+          duration: 5,
+        });
+      }
+
+      notification.success({
+        message: 'Credit Payment Recorded',
+        description: `Payment of ${formatCurrency(paymentAmount)} recorded successfully.`,
+      });
+      
+      // Refresh credits to show updated balances
+      fetchCredits(true); // Force refresh
+      if (onPaymentSuccess) {
+        onPaymentSuccess();
+      }
+      
+      return true;
+    } else {
+      console.error('❌ Unexpected response structure:', response);
+      throw new Error(response?.message || 'Unexpected response from server');
+    }
+  } catch (error) {
+    console.error('❌ ERROR processing credit payment:', error);
+    
+    let userMessage = 'Payment failed due to server error';
+    
+    if (error.response?.status === 500) {
+      const serverError = error.response?.data;
+      console.error('🔍 Server error details:', serverError);
+      userMessage = serverError?.error || serverError?.message || 'Server error while processing payment';
+    } else if (error.response?.status === 400) {
+      userMessage = error.response?.data?.message || 'Invalid payment data provided';
+    } else if (error.response?.status === 404) {
+      userMessage = 'Payment service unavailable. Please try again.';
+    } else if (error.message) {
+      userMessage = error.message;
+    }
+    
+    notification.error({
+      message: 'Payment Failed',
+      description: userMessage,
+      duration: 8,
+    });
+    
+    throw error;
+  }
+};
   // Handle update credit record
   const handleUpdateCredit = async (values) => {
     try {
