@@ -135,7 +135,8 @@ const createApiInstance = (baseURL = API_CONFIG.baseURL, customTimeout = null) =
       const token = localStorage.getItem('sessionToken') || 
                     localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
-                    localStorage.getItem('adminToken');
+                    localStorage.getItem('adminToken') ||
+                    localStorage.getItem('managerToken');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -399,54 +400,155 @@ export const authAPI = {
 
   managerLogin: async (credentials) => {
     try {
-      console.log('🔐 Attempting manager login...');
+      console.log('🔐 Attempting manager login...', { 
+        email: credentials?.email, 
+        hasCode: !!credentials?.secureCode 
+      });
       
-      let response;
-      const loginAttempts = [
-        '/auth/manager/login',
-        '/manager/login',
-        '/auth/login'
-      ];
-
-      for (const endpoint of loginAttempts) {
-        try {
-          const fastInstance = createApiInstance(API_CONFIG.baseURL, 8000);
-          response = await fastInstance.post(endpoint, {
-            email: credentials.email,
-            password: credentials.password,
-            role: 'manager',
-            deviceId: credentials.deviceId || localStorage.getItem('deviceId')
-          });
-          break;
-        } catch (endpointError) {
-          continue;
+      // Validate input
+      if (!credentials || !credentials.email) {
+        throw new Error('Email is required');
+      }
+      
+      // Step 1: If no secure code provided, request one
+      if (!credentials.secureCode) {
+        console.log('📧 Requesting secure code for:', credentials.email);
+        
+        const codeRequest = await authAPI.requestSecureCode({
+          email: credentials.email
+        });
+        
+        // Handle development mode (email disabled)
+        if (codeRequest.developmentMode && codeRequest.secureCode) {
+          console.log('🔑 Development mode - Code:', codeRequest.secureCode);
+          
+          // Auto-verify in development mode
+          try {
+            const verification = await authAPI.verifySecureCode({
+              email: credentials.email,
+              code: codeRequest.secureCode
+            });
+            
+            if (!verification.success) {
+              throw new Error(verification.message || 'Auto-verification failed');
+            }
+            
+            // Store manager data
+            if (verification.token) {
+              localStorage.setItem('managerToken', verification.token);
+              localStorage.setItem('sessionToken', verification.token);
+              localStorage.setItem('authToken', verification.token);
+              
+              if (verification.user) {
+                localStorage.setItem('managerData', JSON.stringify(verification.user));
+                localStorage.setItem('userData', JSON.stringify(verification.user));
+              }
+            }
+            
+            return {
+              success: true,
+              user: verification.user,
+              token: verification.token,
+              device: verification.device,
+              sessionId: verification.sessionId,
+              message: 'Development login successful',
+              isDevMode: true
+            };
+          } catch (verifyError) {
+            console.error('❌ Auto-verification failed:', verifyError);
+            throw new Error('Auto-verification failed. Please try again.');
+          }
+        }
+        
+        if (!codeRequest.success) {
+          throw new Error(codeRequest.message || 'Failed to request secure code');
+        }
+        
+        console.log('✅ Secure code requested successfully');
+        
+        // Return state indicating user should enter the code
+        return {
+          success: true,
+          requiresVerification: true,
+          message: codeRequest.message || 'Secure code sent to your email. Please check your inbox.',
+          email: credentials.email,
+          expiresIn: codeRequest.expiresIn || 15,
+          devMode: false
+        };
+      }
+      
+      // Step 2: Verify the secure code
+      console.log('🔐 Verifying secure code for:', credentials.email);
+      
+      const verification = await authAPI.verifySecureCode({
+        email: credentials.email,
+        code: credentials.secureCode
+      });
+      
+      // Check if device verification is required
+      if (verification.requiresVerification) {
+        console.log('📱 Device verification required');
+        return {
+          success: true,
+          requiresDeviceVerification: true,
+          message: verification.message || 'New device detected. Please wait for admin approval.',
+          deviceInfo: verification.deviceInfo,
+          email: credentials.email
+        };
+      }
+      
+      if (!verification.success) {
+        throw new Error(verification.message || 'Verification failed');
+      }
+      
+      console.log('✅ Manager login successful');
+      
+      // Store manager data
+      if (verification.token) {
+        localStorage.setItem('managerToken', verification.token);
+        localStorage.setItem('sessionToken', verification.token);
+        localStorage.setItem('authToken', verification.token);
+        
+        if (verification.user) {
+          localStorage.setItem('managerData', JSON.stringify(verification.user));
+          localStorage.setItem('userData', JSON.stringify(verification.user));
         }
       }
-
-      if (!response) {
-        throw new Error('All login endpoints failed');
-      }
-
-      const data = response.data;
       
-      if (data.success === true || data.token || data.access_token) {
-        const user = data.user || data.data?.user || data.data || data;
-        const token = data.token || data.access_token;
-        
-        localStorage.setItem('managerToken', token);
-        localStorage.setItem('managerData', JSON.stringify(user));
-        localStorage.setItem('userToken', token);
-        localStorage.setItem('userData', JSON.stringify(user));
-        localStorage.setItem('sessionToken', token);
-        localStorage.setItem('authToken', token);
-        
-        return { success: true, user, token, device: data.device };
-      } else {
-        throw new Error(data.message || 'Login failed');
-      }
+      return {
+        success: true,
+        user: verification.user,
+        token: verification.token,
+        device: verification.device,
+        sessionId: verification.sessionId,
+        message: 'Manager login successful',
+        requiresVerification: false,
+        requiresDeviceVerification: false
+      };
+      
     } catch (error) {
-      console.error('Manager login error:', error);
-      throw new Error(error.message || 'Login failed');
+      console.error('❌ Manager login error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
+      // Parse error for better user feedback
+      let errorMessage = error.message || 'Manager login failed';
+      
+      if (error.response?.status === 404) {
+        errorMessage = 'Login service unavailable. Please contact administrator.';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Invalid credentials. Please try again.';
+      } else if (error.response?.status === 403) {
+        errorMessage = error.response?.data?.message || 'Access denied. Please contact administrator.';
+      } else if (error.response?.status === 400) {
+        errorMessage = error.response?.data?.message || 'Invalid verification code. Please try again.';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      throw new Error(errorMessage);
     }
   },
 
@@ -454,8 +556,10 @@ export const authAPI = {
   
   requestSecureCode: async (emailData) => {
     try {
+      console.log('📧 Requesting secure code for:', emailData.email);
       const fastInstance = createApiInstance(API_CONFIG.baseURL, 8000);
       const response = await fastInstance.post('/auth/request-code', emailData);
+      console.log('✅ Secure code request response:', response.data);
       return response.data;
     } catch (error) {
       console.error('❌ Secure code request error:', error);
@@ -474,8 +578,14 @@ export const authAPI = {
       
       const data = response.data;
       
-      if (!data.success) {
+      if (!data.success && !data.requiresVerification) {
         throw new Error(data.message || 'Verification failed');
+      }
+      
+      // If device verification is required, return the response as-is
+      if (data.requiresVerification) {
+        console.log('📱 Device verification required:', data.message);
+        return data;
       }
       
       const user = data.user || data.data?.user || data.data;
@@ -587,7 +697,8 @@ export const authAPI = {
       const token = localStorage.getItem('sessionToken') || 
                     localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
-                    localStorage.getItem('adminToken');
+                    localStorage.getItem('adminToken') ||
+                    localStorage.getItem('managerToken');
       
       if (!token) {
         throw new Error('No session token');
@@ -648,7 +759,8 @@ export const authAPI = {
       const authToken = token || localStorage.getItem('sessionToken') || 
                         localStorage.getItem('authToken') ||
                         localStorage.getItem('cashierToken') || 
-                        localStorage.getItem('adminToken');
+                        localStorage.getItem('adminToken') ||
+                        localStorage.getItem('managerToken');
       
       if (authToken) {
         try {
@@ -705,7 +817,8 @@ export const authAPI = {
       const token = localStorage.getItem('sessionToken') || 
                     localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
-                    localStorage.getItem('adminToken');
+                    localStorage.getItem('adminToken') ||
+                    localStorage.getItem('managerToken');
       if (!token) throw new Error('No session token');
       
       const response = await fastApi.get('/auth/devices', {
@@ -723,7 +836,8 @@ export const authAPI = {
       const token = localStorage.getItem('sessionToken') || 
                     localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
-                    localStorage.getItem('adminToken');
+                    localStorage.getItem('adminToken') ||
+                    localStorage.getItem('managerToken');
       if (!token) throw new Error('No session token');
       
       const response = await fastApi.delete(`/auth/devices/${deviceId}`, {
@@ -741,7 +855,8 @@ export const authAPI = {
       const token = localStorage.getItem('sessionToken') || 
                     localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
-                    localStorage.getItem('adminToken');
+                    localStorage.getItem('adminToken') ||
+                    localStorage.getItem('managerToken');
       if (!token) throw new Error('No session token');
       
       const response = await fastApi.get('/auth/sessions', {
@@ -761,7 +876,8 @@ export const authAPI = {
       const token = localStorage.getItem('sessionToken') || 
                     localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
-                    localStorage.getItem('adminToken');
+                    localStorage.getItem('adminToken') ||
+                    localStorage.getItem('managerToken');
       if (!token) throw new Error('No session token');
       
       const response = await fastApi.get('/admin/verification-requests', {
@@ -779,7 +895,8 @@ export const authAPI = {
       const token = localStorage.getItem('sessionToken') || 
                     localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
-                    localStorage.getItem('adminToken');
+                    localStorage.getItem('adminToken') ||
+                    localStorage.getItem('managerToken');
       if (!token) throw new Error('No session token');
       
       const response = await fastApi.post('/admin/verify-device', data, {
@@ -832,11 +949,31 @@ export const authAPI = {
     return false;
   },
 
+  isManagerLoggedIn: () => {
+    const token = localStorage.getItem('managerToken') || 
+                  localStorage.getItem('userToken') || 
+                  localStorage.getItem('sessionToken') ||
+                  localStorage.getItem('authToken');
+    const managerData = localStorage.getItem('managerData') || 
+                       localStorage.getItem('userData');
+    
+    if (token && managerData) {
+      try {
+        const user = JSON.parse(managerData);
+        return user.role === 'manager';
+      } catch (error) {
+        return false;
+      }
+    }
+    return false;
+  },
+
   getCurrentUser: () => {
     try {
       const userData = localStorage.getItem('userData') || 
                       localStorage.getItem('cashierData') || 
-                      localStorage.getItem('adminData');
+                      localStorage.getItem('adminData') ||
+                      localStorage.getItem('managerData');
       if (userData) {
         return JSON.parse(userData);
       }
@@ -873,6 +1010,21 @@ export const authAPI = {
       return null;
     } catch (error) {
       console.error('Error parsing admin data:', error);
+      return null;
+    }
+  },
+
+  getCurrentManager: () => {
+    try {
+      const managerData = localStorage.getItem('managerData') || 
+                         localStorage.getItem('userData');
+      if (managerData) {
+        const user = JSON.parse(managerData);
+        return user.role === 'manager' ? user : null;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error parsing manager data:', error);
       return null;
     }
   }
@@ -1505,7 +1657,8 @@ const apiService = {
     validateToken: (userType) => {
       try {
         const tokenKey = userType === 'cashier' ? 'cashierToken' : 
-                         userType === 'manager' ? 'managerToken' : 'adminToken';
+                         userType === 'manager' ? 'managerToken' : 
+                         userType === 'admin' ? 'adminToken' : 'authToken';
         const token = localStorage.getItem(tokenKey) || localStorage.getItem('authToken');
         if (!token) return false;
         // Simple token validation (check it's not expired)
@@ -1524,20 +1677,24 @@ const apiService = {
     },
     getAuthToken: (userType) => {
       const tokenKey = userType === 'cashier' ? 'cashierToken' : 
-                       userType === 'manager' ? 'managerToken' : 'adminToken';
+                       userType === 'manager' ? 'managerToken' : 
+                       userType === 'admin' ? 'adminToken' : 'authToken';
       return localStorage.getItem(tokenKey) || localStorage.getItem('authToken');
     },
     setAuthToken: (token, userType) => {
       const tokenKey = userType === 'cashier' ? 'cashierToken' : 
-                       userType === 'manager' ? 'managerToken' : 'adminToken';
+                       userType === 'manager' ? 'managerToken' : 
+                       userType === 'admin' ? 'adminToken' : 'authToken';
       localStorage.setItem(tokenKey, token);
       localStorage.setItem('authToken', token);
     },
     isAuthenticated: (userType) => {
       const tokenKey = userType === 'cashier' ? 'cashierToken' : 
-                       userType === 'manager' ? 'managerToken' : 'adminToken';
+                       userType === 'manager' ? 'managerToken' : 
+                       userType === 'admin' ? 'adminToken' : 'authToken';
       const userDataKey = userType === 'cashier' ? 'cashierData' : 
-                         userType === 'manager' ? 'managerData' : 'adminData';
+                         userType === 'manager' ? 'managerData' : 
+                         userType === 'admin' ? 'adminData' : 'userData';
       const token = localStorage.getItem(tokenKey) || localStorage.getItem('authToken');
       const userData = localStorage.getItem(userDataKey) || localStorage.getItem('userData');
       return !!(token && userData && apiService.utils.validateToken(userType));
@@ -1558,7 +1715,17 @@ const apiService = {
       cache.clearAll();
     },
     // Add a method to check if logout is in progress
-    isLogoutInProgress: () => isLogoutInProgress
+    isLogoutInProgress: () => isLogoutInProgress,
+    
+    // Add method to get user role
+    getUserRole: () => {
+      try {
+        const user = authAPI.getCurrentUser();
+        return user?.role || null;
+      } catch (error) {
+        return null;
+      }
+    }
   }
 };
 
