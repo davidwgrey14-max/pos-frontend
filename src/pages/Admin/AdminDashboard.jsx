@@ -219,23 +219,23 @@ const fetchDashboardData = async (customFilters = null) => {
     console.log('📊 Combined data response:', response);
     
     // === FIXED: Extract data from response ===
-    let data = {};
-    if (response) {
-      // Check if response has a success property
-      if (response.success === true) {
-        data = response.data || response;
-      } else if (response.success === false) {
-        console.error('API returned error:', response.message);
-        throw new Error(response.message || 'Failed to fetch data');
-      } else {
-        // No success property - assume the response itself is the data
-        data = response;
-      }
-    } else {
-      // Response is null/undefined
-      data = {};
-    }
-
+    // === FIXED: Extract data from response ===
+let data = {};
+if (response) {
+  // Check if response has a success property
+  if (response.success === true) {
+    data = response.data || response;
+  } else if (response.success === false) {
+    console.error('API returned error:', response.message);
+    throw new Error(response.message || 'Failed to fetch data');
+  } else {
+    // No success property OR success is undefined/null - assume the response itself is the data
+    data = response;
+  }
+} else {
+  // Response is null/undefined
+  data = {};
+}
     // Process the data
     const processedData = processDashboardData(data, shopsData);
     
