@@ -1,19 +1,18 @@
-// src/pages/Manager/ManagerLogin.jsx - With secure code flow
+// src/pages/Manager/ManagerLogin.jsx - With secure code flow and proper navigation
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
 import { authAPI } from '../../services/api';
 import { 
   Container, Box, Typography, Avatar, Paper, CssBaseline, Alert, 
-  Button, CircularProgress, TextField, InputAdornment, IconButton,
-  Stepper, Step, StepLabel, StepContent, Card, CardContent,
+  Button, CircularProgress, TextField, Card, CardContent,
   LinearProgress
 } from '@mui/material';
-import { Engineering, Email, Security, CheckCircle, Warning } from '@mui/icons-material';
+import { Engineering, CheckCircle, Warning } from '@mui/icons-material';
 
 const ManagerLogin = () => {
   const navigate = useNavigate();
-  const { login } = useSecurity();
+  const { login, user, isAuthenticated } = useSecurity();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
@@ -36,6 +35,14 @@ const ManagerLogin = () => {
       paper: '#334155' 
     }
   };
+
+  // Check if already logged in
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'manager') {
+      console.log('✅ Already logged in as manager, redirecting...');
+      navigate('/manager/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, user, navigate]);
 
   // Timer for code expiration
   useEffect(() => {
@@ -139,15 +146,22 @@ const ManagerLogin = () => {
     setStep('success');
     setMessage('Login successful! Redirecting...');
     
-    // Call login from security context
+    // Call login from security context - this should set user and token
     if (result.user && result.token) {
       login(result.user, result.token, result.sessionId);
+      
+      // Log the user role for debugging
+      console.log('👤 User role:', result.user.role);
+      console.log('📝 Token received:', result.token.substring(0, 20) + '...');
+      
+      // Redirect to manager dashboard
+      setTimeout(() => {
+        navigate('/manager/dashboard', { replace: true });
+      }, 1500);
+    } else {
+      setError('Login failed: No user or token received');
+      setStep('email');
     }
-    
-    // Redirect to manager dashboard
-    setTimeout(() => {
-      navigate('/manager/dashboard', { replace: true });
-    }, 1500);
   };
 
   const handleResendCode = async () => {
@@ -519,7 +533,7 @@ const ManagerLogin = () => {
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <CheckCircle sx={{ fontSize: 64, color: '#10B981', mb: 2 }} />
               <Typography variant="h6" sx={{ color: 'white', mb: 1 }}>
-                Welcome back!
+                Welcome back, Manager!
               </Typography>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                 {message}

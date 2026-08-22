@@ -1,4 +1,4 @@
-// src/App.js - FIXED
+// src/App.js - FIXED with manager role support
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { message } from 'antd';
@@ -22,25 +22,26 @@ import DeviceVerification from './pages/Admin/DeviceVerification';
 import ShopSelection from './pages/Cashier/ShopSelection';
 import Cart from './pages/Cashier/Cart';
 import Receipt from './pages/Cashier/Receipt';
-// IMPORT Manager Dashboard - This is the fix
+// IMPORT Manager Dashboard
 import ManagerDashboard from './pages/Manager/ManagerDashboard';
 import ManagerDashboardHome from './pages/Manager/ManagerDashboardHome';
 import ManagerLogin from './pages/Manager/ManagerLogin';
 
 const ProtectedRoute = ({ children, requireAdmin = false, requireManager = false }) => {
-  const { isAuthenticated, user, pendingVerification } = useSecurity();
+  const { isAuthenticated, user } = useSecurity();
   const location = useLocation();
-  const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('sessionToken') || 
                   localStorage.getItem('authToken') ||
                   localStorage.getItem('cashierToken') || 
-                  localStorage.getItem('adminToken');
+                  localStorage.getItem('adminToken') ||
+                  localStorage.getItem('managerToken');
     const userData = localStorage.getItem('userData') || 
                      localStorage.getItem('cashierData') || 
-                     localStorage.getItem('adminData');
+                     localStorage.getItem('adminData') ||
+                     localStorage.getItem('managerData');
     
     if (!token || !userData) {
       setChecking(false);
@@ -63,32 +64,59 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireManager = false
   const token = localStorage.getItem('sessionToken') || 
                 localStorage.getItem('authToken') ||
                 localStorage.getItem('cashierToken') || 
-                localStorage.getItem('adminToken');
+                localStorage.getItem('adminToken') ||
+                localStorage.getItem('managerToken');
   
   if (!token) {
+    // Redirect to the appropriate login page based on the route
+    if (requireManager) {
+      return <Navigate to="/manager/login" state={{ from: location }} replace />;
+    }
+    if (requireAdmin) {
+      return <Navigate to="/admin/login" state={{ from: location }} replace />;
+    }
     return <Navigate to="/cashier-login" state={{ from: location }} replace />;
   }
 
-  if (requireAdmin || requireManager) {
-    const adminData = localStorage.getItem('adminData') || 
-                     localStorage.getItem('userData');
-    if (adminData) {
-      try {
-        const user = JSON.parse(adminData);
-        if (requireAdmin && user.role !== 'admin') {
-          return <Navigate to="/cashier/shops" replace />;
-        }
-        if (requireManager && user.role !== 'manager') {
-          return <Navigate to="/cashier/shops" replace />;
-        }
-      } catch (e) {
-        return <Navigate to="/cashier-login" replace />;
-      }
-    } else {
-      return <Navigate to="/cashier-login" replace />;
-    }
+  // Check user role from localStorage
+  let userRole = null;
+  const adminData = localStorage.getItem('adminData') || localStorage.getItem('userData');
+  const managerData = localStorage.getItem('managerData') || localStorage.getItem('userData');
+  const cashierData = localStorage.getItem('cashierData') || localStorage.getItem('userData');
+  
+  if (adminData) {
+    try {
+      const parsed = JSON.parse(adminData);
+      userRole = parsed.role;
+    } catch (e) {}
+  }
+  
+  if (managerData && !userRole) {
+    try {
+      const parsed = JSON.parse(managerData);
+      userRole = parsed.role;
+    } catch (e) {}
+  }
+  
+  if (cashierData && !userRole) {
+    try {
+      const parsed = JSON.parse(cashierData);
+      userRole = parsed.role;
+    } catch (e) {}
   }
 
+  // Check if user has the required role
+  if (requireAdmin && userRole !== 'admin') {
+    console.log('❌ Admin access required but user role is:', userRole);
+    return <Navigate to="/cashier/shops" replace />;
+  }
+  
+  if (requireManager && userRole !== 'manager' && userRole !== 'admin') {
+    console.log('❌ Manager access required but user role is:', userRole);
+    return <Navigate to="/cashier/shops" replace />;
+  }
+
+  // Check device verification
   const isDeviceVerified = localStorage.getItem('deviceVerified') === 'true';
   if (!isDeviceVerified) {
     return (
@@ -104,6 +132,7 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireManager = false
             localStorage.removeItem('authToken');
             localStorage.removeItem('cashierToken');
             localStorage.removeItem('adminToken');
+            localStorage.removeItem('managerToken');
             localStorage.removeItem('deviceVerified');
             window.location.href = '/cashier-login';
           }} style={{ marginTop: 20, padding: '10px 24px', background: '#EF4444', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
@@ -114,8 +143,12 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireManager = false
     );
   }
 
-  const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-  const sessionTimeout = userData.sessionTimeout || 5;
+  // Get session timeout from user data
+  let sessionTimeout = 5; // default 5 minutes
+  try {
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    sessionTimeout = userData.sessionTimeout || 5;
+  } catch (e) {}
 
   return (
     <InactivityMonitor timeout={sessionTimeout}>
@@ -213,9 +246,25 @@ const SmartRedirect = () => {
   const managerData = localStorage.getItem('managerData');
   const token = localStorage.getItem('sessionToken') || 
                 localStorage.getItem('authToken') ||
-                localStorage.getItem('cashierToken');
+                localStorage.getItem('cashierToken') ||
+                localStorage.getItem('adminToken') ||
+                localStorage.getItem('managerToken');
   
   if (!token) return <Navigate to="/" replace />;
+  
+  // Check manager first (highest priority)
+  if (managerData) {
+    try {
+      const parsed = JSON.parse(managerData);
+      if (parsed.role === 'manager') {
+        return <Navigate to="/manager/dashboard" replace />;
+      }
+    } catch (e) {}
+  }
+  
+  if (adminData) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
   
   if (cashierData) {
     try {
@@ -231,15 +280,17 @@ const SmartRedirect = () => {
     }
   }
   
-  if (managerData) {
-    return <Navigate to="/manager/dashboard" replace />;
-  }
-  
-  if (adminData) {
-    return <Navigate to="/admin/dashboard" replace />;
-  }
-  
   return <Navigate to="/" replace />;
 };
+
+// Add keyframe animation for spinner
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(style);
 
 export default App;
