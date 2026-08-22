@@ -1,7 +1,8 @@
-// src/components/InactivityMonitor.jsx
+// src/components/InactivityMonitor.jsx - UPDATED
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSecurity } from '../contexts/SecurityContext'; // Import SecurityContext
 import { 
   Dialog, 
   DialogTitle, 
@@ -19,6 +20,7 @@ import { authAPI } from '../services/api';
 
 const InactivityMonitor = ({ children, timeout = 5 }) => {
   const navigate = useNavigate();
+  const { refreshSession, logout, timeRemaining } = useSecurity(); // Get from context
   const [warning, setWarning] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [timer, setTimer] = useState(null);
@@ -26,8 +28,8 @@ const InactivityMonitor = ({ children, timeout = 5 }) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const activityRef = useRef(true);
   
-  const INACTIVITY_LIMIT = timeout * 60 * 1000; // Convert minutes to ms
-  const WARNING_TIME = 30000; // 30 seconds before logout
+  const INACTIVITY_LIMIT = timeout * 60 * 1000;
+  const WARNING_TIME = 30000;
 
   const resetTimers = () => {
     if (timer) clearTimeout(timer);
@@ -38,31 +40,21 @@ const InactivityMonitor = ({ children, timeout = 5 }) => {
   };
 
   const handleLogout = async (reason = 'inactivity') => {
+    // PREVENT MULTIPLE LOGOUT ATTEMPTS
     if (isLoggingOut) return;
     setIsLoggingOut(true);
     
     try {
-      const token = localStorage.getItem('sessionToken') || localStorage.getItem('cashierToken');
-      if (token) {
-        await authAPI.logout(token);
-      }
+      // Use the context logout instead of calling API directly
+      await logout(reason);
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      // Clear all storage
-      localStorage.removeItem('cashierData');
-      localStorage.removeItem('cashierToken');
-      localStorage.removeItem('sessionToken');
-      localStorage.removeItem('deviceId');
-      localStorage.removeItem('userData');
-      localStorage.removeItem('userToken');
-      localStorage.removeItem('adminData');
-      localStorage.removeItem('adminToken');
-      
       resetTimers();
       setIsLoggingOut(false);
       
-      navigate('/cashier-login', { 
+      // Navigate to login
+      navigate('/admin-login', { 
         replace: true,
         state: { 
           autoLogout: true,
@@ -76,12 +68,10 @@ const InactivityMonitor = ({ children, timeout = 5 }) => {
     resetTimers();
     
     const timerId = setTimeout(() => {
-      // Show warning
       setWarning(true);
       setCountdown(30);
       activityRef.current = false;
       
-      // Start countdown
       const warningId = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
@@ -99,7 +89,6 @@ const InactivityMonitor = ({ children, timeout = 5 }) => {
     setTimer(timerId);
   };
 
-  // Reset timer on user activity
   useEffect(() => {
     const events = [
       'mousedown', 'mousemove', 'keypress', 'scroll', 
@@ -110,7 +99,6 @@ const InactivityMonitor = ({ children, timeout = 5 }) => {
       activityRef.current = true;
       
       if (warning) {
-        // User is active, reset warning
         setWarning(false);
         clearInterval(warningTimer);
         startInactivityTimer();
@@ -124,34 +112,45 @@ const InactivityMonitor = ({ children, timeout = 5 }) => {
       document.addEventListener(event, handleActivity);
     });
     
-    // Initial start
     startInactivityTimer();
     
-    // Periodic session refresh (every 2 minutes)
-    const refreshInterval = setInterval(async () => {
-      try {
-        await authAPI.refreshSession();
-        console.log('🔄 Session refreshed');
-      } catch (error) {
-        console.warn('Session refresh failed:', error);
+    // REMOVE the old refresh interval - let SecurityContext handle it
+    // Instead, listen to timeRemaining and refresh when low
+    let refreshCheck = null;
+    
+    // Check timeRemaining and refresh if needed
+    refreshCheck = setInterval(() => {
+      // Use the context's timeRemaining
+      if (timeRemaining !== undefined && timeRemaining < 60) {
+        // Less than 60 seconds remaining - refresh
+        refreshSession().catch(() => {
+          // Don't logout here - let SecurityContext handle it
+          console.warn('Session refresh failed, will be handled by SecurityContext');
+        });
       }
-    }, 120000);
+    }, 10000); // Check every 10 seconds
     
     return () => {
       events.forEach(event => {
         document.removeEventListener(event, handleActivity);
       });
       resetTimers();
-      clearInterval(refreshInterval);
+      clearInterval(refreshCheck);
     };
-  }, []);
+  }, [timeRemaining]); // Add timeRemaining as dependency
 
-  // Handle warning dialog actions
   const handleStayActive = () => {
     setWarning(false);
     clearInterval(warningTimer);
     activityRef.current = true;
-    startInactivityTimer();
+    
+    // Reset timers and refresh session
+    refreshSession().then(() => {
+      startInactivityTimer();
+    }).catch(() => {
+      // If refresh fails, logout
+      handleLogout('refresh_failed');
+    });
   };
 
   return (
@@ -183,7 +182,7 @@ const InactivityMonitor = ({ children, timeout = 5 }) => {
             <AccessTime />
             <Typography variant="h6" fontWeight="bold">Session Expiring Soon</Typography>
           </Box>
-          <IconButton onClick={handleLogout} sx={{ color: 'white' }}>
+          <IconButton onClick={() => handleLogout('manual')} sx={{ color: 'white' }}>
             <Close />
           </IconButton>
         </DialogTitle>

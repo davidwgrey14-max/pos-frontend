@@ -1,4 +1,4 @@
-// src/services/api.js - COMPLETE WITH SECURITY FEATURES (CLEAN VERSION)
+// src/services/api.js - COMPLETE WITH SECURITY FEATURES & LOGOUT LOOP FIXES
 import axios from 'axios';
 
 // Enhanced Configuration
@@ -114,7 +114,12 @@ const createCache = () => {
 
 const cache = createCache();
 
-// Enhanced Axios Instance with Retry Logic
+// ==================== GLOBAL LOGOUT FLAGS ====================
+// These prevent multiple simultaneous logout attempts
+let isLogoutInProgress = false;
+let isRefreshingSession = false;
+
+// Create API instance with enhanced interceptors
 const createApiInstance = (baseURL = API_CONFIG.baseURL, customTimeout = null) => {
   const instance = axios.create({
     baseURL,
@@ -124,6 +129,7 @@ const createApiInstance = (baseURL = API_CONFIG.baseURL, customTimeout = null) =
     }
   });
 
+  // Request interceptor
   instance.interceptors.request.use(
     (config) => {
       const token = localStorage.getItem('sessionToken') || 
@@ -149,6 +155,7 @@ const createApiInstance = (baseURL = API_CONFIG.baseURL, customTimeout = null) =
     }
   );
 
+  // Response interceptor with logout loop protection
   instance.interceptors.response.use(
     (response) => {
       console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url} - Success`);
@@ -157,6 +164,89 @@ const createApiInstance = (baseURL = API_CONFIG.baseURL, customTimeout = null) =
     async (error) => {
       const originalRequest = error.config;
       
+      // ============================================================
+      // CRITICAL FIX 1: Don't retry logout requests - silently handle
+      // ============================================================
+      if (originalRequest.url === '/auth/logout') {
+        console.log('ℹ️ Logout request failed (likely already logged out), silently handling');
+        // Return a resolved promise to prevent error propagation
+        return Promise.resolve({ 
+          data: { success: true, alreadyLoggedOut: true },
+          status: 200,
+          config: originalRequest
+        });
+      }
+      
+      // ============================================================
+      // CRITICAL FIX 2: Prevent refresh-session retry loops
+      // ============================================================
+      if (originalRequest.url === '/auth/refresh-session') {
+        if (originalRequest._retryCount && originalRequest._retryCount >= 1) {
+          console.log('⚠️ Session refresh failed, not retrying again');
+          return Promise.reject(error);
+        }
+        originalRequest._retryCount = (originalRequest._retryCount || 0) + 1;
+        
+        // Don't attempt token refresh for refresh-session endpoint itself
+        // Just let it fail and let the calling code handle it
+        if (error.response?.status === 401) {
+          console.log('🔒 Session refresh failed with 401, session likely expired');
+          // Dispatch event but don't auto-logout
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('sessionExpired', { 
+              detail: { requestUrl: originalRequest.url, fromRefresh: true }
+            }));
+          }
+          return Promise.reject(error);
+        }
+      }
+      
+      // ============================================================
+      // CRITICAL FIX 3: Don't retry if it's a 401 on any endpoint
+      // ============================================================
+      if (error.response?.status === 401) {
+        const message = error.response?.data?.message || '';
+        const isSessionExpired = message.includes('SESSION_EXPIRED') || 
+                                 message.includes('session expired') ||
+                                 message.includes('Session expired');
+        
+        if (isSessionExpired) {
+          console.log('🔒 Session expired, clearing local storage');
+          
+          // Clear storage but don't call logout API (already expired)
+          // This prevents the 401 logout loop
+          localStorage.removeItem('cashierData');
+          localStorage.removeItem('cashierToken');
+          localStorage.removeItem('sessionToken');
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('deviceId');
+          localStorage.removeItem('deviceVerified');
+          localStorage.removeItem('userData');
+          localStorage.removeItem('userToken');
+          localStorage.removeItem('adminData');
+          localStorage.removeItem('adminToken');
+          localStorage.removeItem('managerData');
+          localStorage.removeItem('managerToken');
+          cache.clearAll();
+          
+          // Dispatch session expired event
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('sessionExpired', { 
+              detail: { 
+                requestUrl: originalRequest.url,
+                message: message
+              }
+            }));
+          }
+        }
+        
+        // Don't retry 401 requests (except for specific cases)
+        return Promise.reject(error);
+      }
+      
+      // ============================================================
+      // Retry logic for network errors only (not for 401)
+      // ============================================================
       if ((error.code === 'ECONNABORTED' || error.code === 'NETWORK_ERROR') && 
           !originalRequest._retryCount) {
         
@@ -169,26 +259,6 @@ const createApiInstance = (baseURL = API_CONFIG.baseURL, customTimeout = null) =
           await new Promise(resolve => setTimeout(resolve, delay));
           
           return instance(originalRequest);
-        }
-      }
-      
-      // Handle session expiry
-      if (error.response?.status === 401) {
-        const message = error.response?.data?.message || '';
-        if (message.includes('SESSION_EXPIRED') || message.includes('session expired')) {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('sessionToken');
-          localStorage.removeItem('cashierToken');
-          localStorage.removeItem('adminToken');
-          localStorage.removeItem('userData');
-          localStorage.removeItem('cashierData');
-          localStorage.removeItem('adminData');
-          localStorage.removeItem('deviceVerified');
-          
-          // Dispatch session expired event
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('sessionExpired'));
-          }
         }
       }
       
@@ -325,61 +395,60 @@ export const authAPI = {
     }
   },
 
-  // In authAPI object, add after cashierLogin:
+  // ==================== MANAGER LOGIN ====================
 
-managerLogin: async (credentials) => {
-  try {
-    console.log('🔐 Attempting manager login...');
-    
-    
-    let response;
-    const loginAttempts = [
-      '/auth/manager/login',
-      '/manager/login',
-      '/auth/login'
-    ];
+  managerLogin: async (credentials) => {
+    try {
+      console.log('🔐 Attempting manager login...');
+      
+      let response;
+      const loginAttempts = [
+        '/auth/manager/login',
+        '/manager/login',
+        '/auth/login'
+      ];
 
-    for (const endpoint of loginAttempts) {
-      try {
-        const fastInstance = createApiInstance(API_CONFIG.baseURL, 8000);
-        response = await fastInstance.post(endpoint, {
-          email: credentials.email,
-          password: credentials.password,
-          role: 'manager',
-          deviceId: credentials.deviceId || localStorage.getItem('deviceId')
-        });
-        break;
-      } catch (endpointError) {
-        continue;
+      for (const endpoint of loginAttempts) {
+        try {
+          const fastInstance = createApiInstance(API_CONFIG.baseURL, 8000);
+          response = await fastInstance.post(endpoint, {
+            email: credentials.email,
+            password: credentials.password,
+            role: 'manager',
+            deviceId: credentials.deviceId || localStorage.getItem('deviceId')
+          });
+          break;
+        } catch (endpointError) {
+          continue;
+        }
       }
-    }
 
-    if (!response) {
-      throw new Error('All login endpoints failed');
-    }
+      if (!response) {
+        throw new Error('All login endpoints failed');
+      }
 
-    const data = response.data;
-    
-    if (data.success === true || data.token || data.access_token) {
-      const user = data.user || data.data?.user || data.data || data;
-      const token = data.token || data.access_token;
+      const data = response.data;
       
-      localStorage.setItem('managerToken', token);
-      localStorage.setItem('managerData', JSON.stringify(user));
-      localStorage.setItem('userToken', token);
-      localStorage.setItem('userData', JSON.stringify(user));
-      localStorage.setItem('sessionToken', token);
-      localStorage.setItem('authToken', token);
-      
-      return { success: true, user, token, device: data.device };
-    } else {
-      throw new Error(data.message || 'Login failed');
+      if (data.success === true || data.token || data.access_token) {
+        const user = data.user || data.data?.user || data.data || data;
+        const token = data.token || data.access_token;
+        
+        localStorage.setItem('managerToken', token);
+        localStorage.setItem('managerData', JSON.stringify(user));
+        localStorage.setItem('userToken', token);
+        localStorage.setItem('userData', JSON.stringify(user));
+        localStorage.setItem('sessionToken', token);
+        localStorage.setItem('authToken', token);
+        
+        return { success: true, user, token, device: data.device };
+      } else {
+        throw new Error(data.message || 'Login failed');
+      }
+    } catch (error) {
+      console.error('Manager login error:', error);
+      throw new Error(error.message || 'Login failed');
     }
-  } catch (error) {
-    console.error('Manager login error:', error);
-    throw new Error(error.message || 'Login failed');
-  }
-},
+  },
 
   // ==================== SECURE CODE LOGIN ====================
   
@@ -434,17 +503,16 @@ managerLogin: async (credentials) => {
         fastApi.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
       }
       
-      // In authAPI.verifySecureCode, after the user data extraction:
-if (user.role === 'admin') {
-  localStorage.setItem('adminData', JSON.stringify(user));
-  localStorage.setItem('userData', JSON.stringify(user));
-} else if (user.role === 'manager') {
-  localStorage.setItem('managerData', JSON.stringify(user));
-  localStorage.setItem('userData', JSON.stringify(user));
-} else if (user.role === 'cashier') {
-  localStorage.setItem('cashierData', JSON.stringify(user));
-  localStorage.setItem('userData', JSON.stringify(user));
-}
+      if (user.role === 'admin') {
+        localStorage.setItem('adminData', JSON.stringify(user));
+        localStorage.setItem('userData', JSON.stringify(user));
+      } else if (user.role === 'manager') {
+        localStorage.setItem('managerData', JSON.stringify(user));
+        localStorage.setItem('userData', JSON.stringify(user));
+      } else if (user.role === 'cashier') {
+        localStorage.setItem('cashierData', JSON.stringify(user));
+        localStorage.setItem('userData', JSON.stringify(user));
+      }
       
       if (data.device) {
         localStorage.setItem('deviceId', data.device.deviceId || data.device.id);
@@ -508,36 +576,109 @@ if (user.role === 'admin') {
   
   refreshSession: async () => {
     try {
+      // Prevent multiple simultaneous refresh attempts
+      if (isRefreshingSession) {
+        console.log('⚠️ Session refresh already in progress, skipping duplicate');
+        return { success: true, alreadyRefreshing: true };
+      }
+      
+      isRefreshingSession = true;
+      
       const token = localStorage.getItem('sessionToken') || 
                     localStorage.getItem('authToken') ||
                     localStorage.getItem('cashierToken') || 
                     localStorage.getItem('adminToken');
-      if (!token) throw new Error('No session token');
+      
+      if (!token) {
+        throw new Error('No session token');
+      }
       
       const response = await fastApi.post('/auth/refresh-session', {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
       return response.data;
     } catch (error) {
       console.error('❌ Session refresh error:', error);
+      
+      // If refresh fails with 401, session is expired - clear storage
+      if (error.response?.status === 401) {
+        console.log('🔒 Session refresh failed with 401, clearing storage');
+        localStorage.removeItem('cashierData');
+        localStorage.removeItem('cashierToken');
+        localStorage.removeItem('sessionToken');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('deviceId');
+        localStorage.removeItem('deviceVerified');
+        localStorage.removeItem('userData');
+        localStorage.removeItem('userToken');
+        localStorage.removeItem('adminData');
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('managerData');
+        localStorage.removeItem('managerToken');
+        cache.clearAll();
+        
+        // Dispatch session expired event
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('sessionExpired', { 
+            detail: { reason: 'refresh_failed' }
+          }));
+        }
+      }
+      
       throw new Error(handleApiError(error));
+    } finally {
+      isRefreshingSession = false;
     }
   },
 
+  // ==================== LOGOUT WITH LOOP PROTECTION ====================
+  
   logout: async (token) => {
+    // CRITICAL: Prevent multiple simultaneous logout attempts
+    if (isLogoutInProgress) {
+      console.log('⚠️ Logout already in progress, skipping duplicate call');
+      return { success: true, alreadyLoggedOut: true };
+    }
+    
+    isLogoutInProgress = true;
+    console.log('🔒 Starting logout process...');
+    
     try {
       const authToken = token || localStorage.getItem('sessionToken') || 
                         localStorage.getItem('authToken') ||
                         localStorage.getItem('cashierToken') || 
                         localStorage.getItem('adminToken');
+      
       if (authToken) {
-        await fastApi.post('/auth/logout', {}, {
-          headers: { Authorization: `Bearer ${authToken}` }
-        });
+        try {
+          // Use a separate instance with no retry to avoid loops
+          const logoutInstance = axios.create({
+            baseURL: API_CONFIG.baseURL,
+            timeout: 5000,
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`
+            }
+          });
+          
+          await logoutInstance.post('/auth/logout');
+          console.log('✅ Logout API call successful');
+        } catch (error) {
+          // If we get a 401, the session is already dead - this is fine
+          if (error.response?.status === 401) {
+            console.log('ℹ️ Session already expired, clearing local state');
+          } else {
+            console.error('❌ Logout API error:', error);
+          }
+        }
+      } else {
+        console.log('ℹ️ No token found, clearing local state only');
       }
     } catch (error) {
       console.error('❌ Logout error:', error);
     } finally {
+      // Always clear local storage regardless of API success
       localStorage.removeItem('cashierData');
       localStorage.removeItem('cashierToken');
       localStorage.removeItem('sessionToken');
@@ -548,7 +689,11 @@ if (user.role === 'admin') {
       localStorage.removeItem('userToken');
       localStorage.removeItem('adminData');
       localStorage.removeItem('adminToken');
+      localStorage.removeItem('managerData');
+      localStorage.removeItem('managerToken');
       cache.clearAll();
+      
+      isLogoutInProgress = false;
       console.log('✅ Logout completed - all user data cleared');
     }
   },
@@ -1238,6 +1383,7 @@ export const transactionAPI = {
     }
   }
 };
+
 // ==================== ADMIN API ====================
 
 export const adminAPI = {
@@ -1354,7 +1500,7 @@ const apiService = {
   cache,
   clearCache: () => cache.clearAll(),
   handleApiError,
-  // Add missing utils object
+  // Utility methods
   utils: {
     validateToken: (userType) => {
       try {
@@ -1410,7 +1556,9 @@ const apiService = {
       localStorage.removeItem('userData');
       localStorage.removeItem('userToken');
       cache.clearAll();
-    }
+    },
+    // Add a method to check if logout is in progress
+    isLogoutInProgress: () => isLogoutInProgress
   }
 };
 
