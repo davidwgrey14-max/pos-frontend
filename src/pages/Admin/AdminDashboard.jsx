@@ -1,5 +1,5 @@
-// src/pages/Admin/AdminDashboard.jsx - Full Navigation Enabled
-import React, { useState, useEffect } from 'react';
+// src/pages/Admin/AdminDashboard.jsx - Fixed Navigation
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
   Button, Modal, Space, Tooltip, message, Badge, Avatar,
@@ -30,9 +30,19 @@ import {
   FileTextOutlined,
   PlusOutlined
 } from '@ant-design/icons';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
 import { unifiedAPI, shopAPI, authAPI } from '../../services/api';
+
+// Lazy load sub-pages for better performance
+const ProductManagement = lazy(() => import('./ProductManagement'));
+const ShopManagement = lazy(() => import('./ShopManagement'));
+const CashierManagement = lazy(() => import('./CashierManagement'));
+const CreditManagement = lazy(() => import('./CreditManagement'));
+const DeviceVerification = lazy(() => import('./DeviceVerification'));
+const ExpenseManagement = lazy(() => import('./ExpenseManagement'));
+const Inventory = lazy(() => import('./Inventory'));
+const TransactionReports = lazy(() => import('./TransactionReports'));
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -85,6 +95,35 @@ const AdminDashboard = () => {
     pendingVerifications: []
   });
 
+  // Get the current page name from path
+  const getPageName = () => {
+    const path = location.pathname;
+    const page = path.split('/').pop();
+    switch (page) {
+      case 'dashboard':
+      case 'admin':
+        return 'DASHBOARD';
+      case 'products':
+        return 'PRODUCTS';
+      case 'shops':
+        return 'SHOPS';
+      case 'cashiers':
+        return 'CASHIERS';
+      case 'transactions':
+        return 'TRANSACTIONS';
+      case 'expenses':
+        return 'EXPENSES';
+      case 'inventory':
+        return 'INVENTORY';
+      case 'credits':
+        return 'CREDITS';
+      case 'verify-device':
+        return 'DEVICE VERIFICATION';
+      default:
+        return 'ADMIN';
+    }
+  };
+
   // Get current selected menu key based on path
   const getSelectedKey = () => {
     const path = location.pathname;
@@ -98,6 +137,12 @@ const AdminDashboard = () => {
     if (path.includes('/admin/credits')) return 'credits';
     if (path.includes('/admin/verify-device')) return 'verify-device';
     return 'dashboard';
+  };
+
+  // Check if we're on dashboard page
+  const isDashboardPage = () => {
+    const path = location.pathname;
+    return path === '/admin/dashboard' || path === '/admin';
   };
 
   // User menu items
@@ -151,7 +196,7 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     // Only fetch dashboard data if on dashboard page
-    if (location.pathname === '/admin/dashboard' || location.pathname === '/admin') {
+    if (isDashboardPage()) {
       fetchDashboardData();
       fetchPendingVerifications();
     }
@@ -160,7 +205,7 @@ const AdminDashboard = () => {
   // Auto-refresh effect - only when on dashboard
   useEffect(() => {
     let intervalId;
-    if (filters.autoRefresh && (location.pathname === '/admin/dashboard' || location.pathname === '/admin')) {
+    if (filters.autoRefresh && isDashboardPage()) {
       intervalId = setInterval(() => {
         console.log('🔄 Auto-refreshing dashboard data...');
         fetchDashboardData();
@@ -197,12 +242,10 @@ const AdminDashboard = () => {
       setLoading(true);
       setRefreshing(true);
       
-      // Fetch shops first
       const shopsData = await shopAPI.getAll();
       console.log('🏪 Shops fetched:', shopsData?.length || 0);
       setShops(shopsData || []);
 
-      // Build params for combined API
       const params = {};
       if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
         params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
@@ -212,12 +255,10 @@ const AdminDashboard = () => {
         params.shopId = activeFilters.shop;
       }
 
-      // Fetch combined transaction data from backend
       console.log('📡 Fetching combined data with params:', params);
       const response = await unifiedAPI.getCombinedTransactions(params);
       console.log('📊 Combined data response:', response);
       
-      // Extract data from response
       let data = {};
       if (response && response.success) {
         data = response.data || response;
@@ -228,7 +269,6 @@ const AdminDashboard = () => {
         data = response || {};
       }
 
-      // Process the data
       const processedData = processDashboardData(data, shopsData);
       
       setDashboardData(prev => ({
@@ -243,7 +283,6 @@ const AdminDashboard = () => {
       console.error('💥 Dashboard fetch failed:', error);
       message.error(error.message || 'Failed to load dashboard data');
       
-      // Set default/empty data on error
       setDashboardData(prev => ({
         ...prev,
         financialStats: getDefaultStats(),
@@ -586,8 +625,521 @@ const AdminDashboard = () => {
     }
   ];
 
-  // Check if we're on a sub-page (not dashboard)
-  const isSubPage = location.pathname !== '/admin/dashboard' && location.pathname !== '/admin';
+  // Render the appropriate page content based on route
+  const renderContent = () => {
+    const path = location.pathname;
+    
+    // Dashboard page
+    if (path === '/admin/dashboard' || path === '/admin') {
+      return renderDashboard();
+    }
+    
+    // Sub-pages - use lazy loaded components
+    return (
+      <Suspense fallback={
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16, color: 'rgba(255,255,255,0.7)' }}>Loading page...</div>
+        </div>
+      }>
+        {path.includes('/admin/products') && <ProductManagement />}
+        {path.includes('/admin/shops') && <ShopManagement />}
+        {path.includes('/admin/cashiers') && <CashierManagement />}
+        {path.includes('/admin/transactions') && <TransactionReports />}
+        {path.includes('/admin/expenses') && <ExpenseManagement />}
+        {path.includes('/admin/inventory') && <Inventory />}
+        {path.includes('/admin/credits') && <CreditManagement />}
+        {path.includes('/admin/verify-device') && <DeviceVerification />}
+      </Suspense>
+    );
+  };
+
+  // Render dashboard content
+  const renderDashboard = () => {
+    if (loading) {
+      return (
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16, color: 'rgba(255,255,255,0.7)' }}>Loading dashboard data...</div>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {/* Filters Panel */}
+        {filterVisible && (
+          <Card 
+            size="small" 
+            style={{ 
+              marginBottom: 16, 
+              border: '1px solid #2D3748', 
+              borderRadius: '8px',
+              background: '#1A2332'
+            }}
+            title={
+              <Space>
+                <FilterOutlined style={{ color: '#6366F1' }} />
+                <Text strong style={{ color: 'white' }}>Dashboard Filters</Text>
+              </Space>
+            }
+            extra={
+              <Button size="small" onClick={() => {
+                setFilters({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
+                fetchDashboardData({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
+              }}>
+                Clear Filters
+              </Button>
+            }
+          >
+            <Row gutter={[12, 12]} align="middle">
+              <Col xs={24} sm={12} md={8}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Date Range</Text>
+                  <RangePicker
+                    style={{ width: '100%' }}
+                    value={filters.dateRange}
+                    onChange={(dates) => handleFilterChange('dateRange', dates)}
+                    format="YYYY-MM-DD"
+                  />
+                </Space>
+              </Col>
+              <Col xs={24} sm={12} md={8}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Shop</Text>
+                  <Select
+                    style={{ width: '100%' }}
+                    value={filters.shop}
+                    onChange={(value) => handleFilterChange('shop', value)}
+                    placeholder="Select Shop"
+                  >
+                    <Option value="all">All Shops</Option>
+                    {shops.map(shop => (
+                      <Option key={shop._id} value={shop._id}>
+                        {shop.name}
+                      </Option>
+                    ))}
+                  </Select>
+                </Space>
+              </Col>
+              <Col xs={24} sm={12} md={8}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Auto Refresh</Text>
+                  <div>
+                    <Switch
+                      checked={filters.autoRefresh}
+                      onChange={(checked) => handleFilterChange('autoRefresh', checked)}
+                      checkedChildren="ON"
+                      unCheckedChildren="OFF"
+                    />
+                    <Text style={{ color: 'rgba(255,255,255,0.5)', marginLeft: 8, fontSize: '12px' }}>
+                      Refresh every 30s
+                    </Text>
+                  </div>
+                </Space>
+              </Col>
+            </Row>
+          </Card>
+        )}
+
+        {/* Data Timestamp */}
+        <Row style={{ marginBottom: 16 }} justify="space-between" align="middle">
+          <Col>
+            {dataTimestamp && (
+              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
+                Last updated: {new Date(dataTimestamp).toLocaleString()}
+                {filters.autoRefresh && (
+                  <Tag color="green" style={{ marginLeft: 8 }}>Auto-refresh ON</Tag>
+                )}
+              </Text>
+            )}
+          </Col>
+          <Col>
+            {dashboardData.pendingVerifications?.length > 0 && (
+              <Button 
+                type="primary" 
+                danger
+                icon={<SafetyOutlined />}
+                onClick={() => navigate('/admin/verify-device')}
+                size="small"
+              >
+                {dashboardData.pendingVerifications.length} Pending Verifications
+              </Button>
+            )}
+          </Col>
+        </Row>
+
+        {/* Financial Overview */}
+        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+          <Col span={24}>
+            <Card 
+              title={
+                <Space>
+                  <LineChartOutlined style={{ color: '#6366F1', fontSize: '18px' }} />
+                  <Text strong style={{ fontSize: '16px', color: 'white' }}>Financial Overview</Text>
+                </Space>
+              }
+              style={{ 
+                borderRadius: '12px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                border: '1px solid #2D3748',
+                background: '#1A2332'
+              }}
+              bodyStyle={{ padding: '16px' }}
+            >
+              <Row gutter={[16, 16]}>
+                <Col xs={24} sm={12} md={8} lg={6}>
+                  <Card 
+                    size="small" 
+                    style={{ 
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      border: 'none',
+                      borderRadius: '8px'
+                    }}
+                    bodyStyle={{ padding: '12px', textAlign: 'center' }}
+                  >
+                    <Statistic 
+                      title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Revenue</Text>}
+                      value={dashboardData.financialStats.totalRevenue || 0} 
+                      prefix="KES" 
+                      precision={0}
+                      valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
+                    />
+                  </Card>
+                </Col>
+                
+                <Col xs={24} sm={12} md={8} lg={6}>
+                  <Card 
+                    size="small" 
+                    style={{ 
+                      background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                      border: 'none',
+                      borderRadius: '8px'
+                    }}
+                    bodyStyle={{ padding: '12px', textAlign: 'center' }}
+                  >
+                    <Statistic 
+                      title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Sales</Text>}
+                      value={dashboardData.financialStats.totalSales || 0} 
+                      precision={0}
+                      valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
+                    />
+                  </Card>
+                </Col>
+
+                <Col xs={24} sm={12} md={8} lg={6}>
+                  <Card 
+                    size="small" 
+                    style={{ 
+                      background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                      border: 'none',
+                      borderRadius: '8px'
+                    }}
+                    bodyStyle={{ padding: '12px', textAlign: 'center' }}
+                  >
+                    <Statistic 
+                      title={<Text style={{ color: 'white', fontSize: '12px' }}>Net Profit</Text>}
+                      value={dashboardData.financialStats.netProfit || 0} 
+                      prefix="KES" 
+                      precision={0}
+                      valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
+                    />
+                  </Card>
+                </Col>
+
+                <Col xs={24} sm={12} md={8} lg={6}>
+                  <Card 
+                    size="small" 
+                    style={{ 
+                      background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                      border: 'none',
+                      borderRadius: '8px'
+                    }}
+                    bodyStyle={{ padding: '12px', textAlign: 'center' }}
+                  >
+                    <Statistic 
+                      title={<Text style={{ color: 'white', fontSize: '12px' }}>Outstanding Credit</Text>}
+                      value={dashboardData.financialStats.outstandingCredit || 0} 
+                      prefix="KES" 
+                      precision={0}
+                      valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
+                    />
+                  </Card>
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+        </Row>
+
+        {/* Alerts Section */}
+        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+          <Col span={24}>
+            {dashboardData.businessStats.lowStockCount > 0 && (
+              <Alert
+                message={`${dashboardData.businessStats.lowStockCount} products are low on stock`}
+                description="Some products need to be reordered to avoid stockouts."
+                type="warning"
+                showIcon
+                action={
+                  <Button size="small" type="primary" onClick={() => navigate('/admin/inventory')}>
+                    View Inventory
+                  </Button>
+                }
+                style={{ marginBottom: 8, borderRadius: '8px' }}
+              />
+            )}
+            {dashboardData.financialStats.outstandingCredit > 0 && (
+              <Alert
+                message={`Outstanding credit: ${formatCurrency(dashboardData.financialStats.outstandingCredit)}`}
+                description="Monitor credit collection and follow up with customers."
+                type="info"
+                showIcon
+                action={
+                  <Button size="small" type="primary" onClick={() => navigate('/admin/credits')}>
+                    View Credits
+                  </Button>
+                }
+                style={{ marginBottom: 8, borderRadius: '8px' }}
+              />
+            )}
+            {dashboardData.pendingVerifications?.length > 0 && (
+              <Alert
+                message={`${dashboardData.pendingVerifications.length} device(s) pending verification`}
+                description="New devices are waiting for your approval."
+                type="error"
+                showIcon
+                icon={<SafetyOutlined />}
+                action={
+                  <Button size="small" type="primary" onClick={() => navigate('/admin/verify-device')}>
+                    Review
+                  </Button>
+                }
+                style={{ borderRadius: '8px' }}
+              />
+            )}
+          </Col>
+        </Row>
+
+        {/* Main Content Grid */}
+        <Row gutter={[16, 16]}>
+          <Col xs={24} lg={12}>
+            <Card 
+              title={
+                <Space>
+                  <ShoppingCartOutlined style={{ color: '#6366F1' }} />
+                  <Text strong style={{ color: 'white' }}>Recent Transactions</Text>
+                  <Badge count={dashboardData.recentTransactions.length} showZero />
+                </Space>
+              }
+              extra={
+                <Space>
+                  <Search
+                    placeholder="Search..."
+                    size="small"
+                    style={{ width: 120 }}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    allowClear
+                  />
+                  <Button 
+                    size="small" 
+                    type="primary" 
+                    onClick={() => navigate('/admin/transactions')}
+                  >
+                    View All
+                  </Button>
+                </Space>
+              }
+              style={{ 
+                borderRadius: '12px', 
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                border: '1px solid #2D3748',
+                background: '#1A2332'
+              }}
+            >
+              <Table 
+                dataSource={dashboardData.recentTransactions} 
+                columns={salesColumns} 
+                pagination={{ pageSize: 5, size: 'small' }}
+                size="small"
+                rowKey={(record) => record._id || record.id || `txn-${Math.random()}`}
+                locale={{ emptyText: 'No recent transactions' }}
+              />
+            </Card>
+          </Col>
+
+          <Col xs={24} lg={12}>
+            <Card 
+              title={
+                <Space>
+                  <WarningOutlined style={{ color: '#ff4d4f' }} />
+                  <Text strong style={{ color: 'white' }}>Low Stock Products</Text>
+                  <Badge 
+                    count={dashboardData.lowStockProducts.length} 
+                    showZero 
+                    style={{ backgroundColor: '#ff4d4f' }} 
+                  />
+                </Space>
+              }
+              extra={
+                <Button 
+                  size="small" 
+                  onClick={() => navigate('/admin/inventory')}
+                >
+                  Manage
+                </Button>
+              }
+              style={{ 
+                borderRadius: '12px', 
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                border: '1px solid #2D3748',
+                background: '#1A2332'
+              }}
+            >
+              <Table 
+                dataSource={dashboardData.lowStockProducts} 
+                columns={lowStockColumns} 
+                pagination={false}
+                size="small"
+                rowKey={(record) => record._id || record.id || `prod-${Math.random()}`}
+                locale={{ emptyText: 'All products well stocked' }}
+              />
+            </Card>
+          </Col>
+
+          <Col xs={24} lg={12}>
+            <Card 
+              title={
+                <Space>
+                  <ProductOutlined style={{ color: '#52c41a' }} />
+                  <Text strong style={{ color: 'white' }}>Top Selling Products</Text>
+                </Space>
+              }
+              extra={
+                <Button 
+                  size="small" 
+                  type="primary" 
+                  onClick={() => navigate('/admin/products')}
+                >
+                  View All
+                </Button>
+              }
+              style={{ 
+                borderRadius: '12px', 
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                border: '1px solid #2D3748',
+                background: '#1A2332'
+              }}
+            >
+              <List
+                dataSource={dashboardData.topProducts}
+                renderItem={(item, index) => (
+                  <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
+                    <List.Item.Meta
+                      avatar={
+                        <Avatar 
+                          size="small" 
+                          style={{ 
+                            backgroundColor: index < 3 ? '#6366F1' : '#4A5568',
+                            fontSize: '10px',
+                            fontWeight: 'bold',
+                            color: 'white'
+                          }}
+                        >
+                          {index + 1}
+                        </Avatar>
+                      }
+                      title={
+                        <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
+                          {item.name || 'Unknown Product'}
+                        </Text>
+                      }
+                      description={
+                        <Space direction="vertical" size={0}>
+                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                            Sold: {item.totalSold || 0} units
+                          </Text>
+                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                            Revenue: {formatCurrency(item.totalRevenue || 0)}
+                          </Text>
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                )}
+                locale={{ emptyText: 'No product sales data' }}
+              />
+            </Card>
+          </Col>
+
+          <Col xs={24} lg={12}>
+            <Card 
+              title={
+                <Space>
+                  <ShopOutlined style={{ color: '#9b59b6' }} />
+                  <Text strong style={{ color: 'white' }}>Shop Performance</Text>
+                </Space>
+              }
+              extra={
+                <Button 
+                  size="small" 
+                  type="primary" 
+                  onClick={() => navigate('/admin/shops')}
+                >
+                  View All
+                </Button>
+              }
+              style={{ 
+                borderRadius: '12px', 
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                border: '1px solid #2D3748',
+                background: '#1A2332'
+              }}
+            >
+              <List
+                dataSource={dashboardData.shopPerformance}
+                renderItem={(item) => (
+                  <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
+                    <List.Item.Meta
+                      avatar={
+                        <Avatar 
+                          size="small" 
+                          style={{ 
+                            backgroundColor: '#9b59b6',
+                            fontSize: '10px',
+                            fontWeight: 'bold',
+                            color: 'white'
+                          }}
+                        >
+                          {item.name?.charAt(0)?.toUpperCase() || 'S'}
+                        </Avatar>
+                      }
+                      title={
+                        <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
+                          {item.name || 'Unknown Shop'}
+                        </Text>
+                      }
+                      description={
+                        <Space direction="vertical" size={0}>
+                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                            Transactions: {item.transactions || 0}
+                          </Text>
+                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                            Revenue: {formatCurrency(item.revenue || 0)}
+                          </Text>
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                )}
+                locale={{ emptyText: 'No shop performance data' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      </>
+    );
+  };
 
   return (
     <Layout style={{ minHeight: '100vh', background: '#0F172A' }}>
@@ -635,13 +1187,7 @@ const AdminDashboard = () => {
           zIndex: 1000
         }}>
           <Title level={4} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
-            {isSubPage ? (
-              <span>
-                PAMELA - {location.pathname.split('/').pop().charAt(0).toUpperCase() + location.pathname.split('/').pop().slice(1).replace('-', ' ')}
-              </span>
-            ) : (
-              'PAMELA - ADMIN'
-            )}
+            PAMELA - {getPageName()}
           </Title>
           <Space>
             {timeRemaining !== undefined && (
@@ -656,7 +1202,7 @@ const AdminDashboard = () => {
             )}
             
             {/* Only show dashboard controls on dashboard page */}
-            {!isSubPage && (
+            {isDashboardPage() && (
               <>
                 <Button 
                   type={filters.autoRefresh ? "primary" : "default"}
@@ -717,492 +1263,7 @@ const AdminDashboard = () => {
         </Header>
         
         <Content style={{ margin: '16px', padding: 16, background: '#0F172A', minHeight: 'calc(100vh - 112px)' }}>
-          {/* Render child routes or dashboard content */}
-          {isSubPage ? (
-            <Outlet />
-          ) : (
-            <>
-              {/* Filters Panel */}
-              {filterVisible && (
-                <Card 
-                  size="small" 
-                  style={{ 
-                    marginBottom: 16, 
-                    border: '1px solid #2D3748', 
-                    borderRadius: '8px',
-                    background: '#1A2332'
-                  }}
-                  title={
-                    <Space>
-                      <FilterOutlined style={{ color: '#6366F1' }} />
-                      <Text strong style={{ color: 'white' }}>Dashboard Filters</Text>
-                    </Space>
-                  }
-                  extra={
-                    <Button size="small" onClick={() => {
-                      setFilters({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
-                      fetchDashboardData({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
-                    }}>
-                      Clear Filters
-                    </Button>
-                  }
-                >
-                  <Row gutter={[12, 12]} align="middle">
-                    <Col xs={24} sm={12} md={8}>
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Date Range</Text>
-                        <RangePicker
-                          style={{ width: '100%' }}
-                          value={filters.dateRange}
-                          onChange={(dates) => handleFilterChange('dateRange', dates)}
-                          format="YYYY-MM-DD"
-                        />
-                      </Space>
-                    </Col>
-                    <Col xs={24} sm={12} md={8}>
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Shop</Text>
-                        <Select
-                          style={{ width: '100%' }}
-                          value={filters.shop}
-                          onChange={(value) => handleFilterChange('shop', value)}
-                          placeholder="Select Shop"
-                        >
-                          <Option value="all">All Shops</Option>
-                          {shops.map(shop => (
-                            <Option key={shop._id} value={shop._id}>
-                              {shop.name}
-                            </Option>
-                          ))}
-                        </Select>
-                      </Space>
-                    </Col>
-                    <Col xs={24} sm={12} md={8}>
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Auto Refresh</Text>
-                        <div>
-                          <Switch
-                            checked={filters.autoRefresh}
-                            onChange={(checked) => handleFilterChange('autoRefresh', checked)}
-                            checkedChildren="ON"
-                            unCheckedChildren="OFF"
-                          />
-                          <Text style={{ color: 'rgba(255,255,255,0.5)', marginLeft: 8, fontSize: '12px' }}>
-                            Refresh every 30s
-                          </Text>
-                        </div>
-                      </Space>
-                    </Col>
-                  </Row>
-                </Card>
-              )}
-
-              {loading ? (
-                <div style={{ textAlign: 'center', padding: '50px' }}>
-                  <Spin size="large" />
-                  <div style={{ marginTop: 16, color: 'rgba(255,255,255,0.7)' }}>Loading dashboard data...</div>
-                </div>
-              ) : (
-                <>
-                  {/* Data Timestamp */}
-                  <Row style={{ marginBottom: 16 }} justify="space-between" align="middle">
-                    <Col>
-                      {dataTimestamp && (
-                        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
-                          Last updated: {new Date(dataTimestamp).toLocaleString()}
-                          {filters.autoRefresh && (
-                            <Tag color="green" style={{ marginLeft: 8 }}>Auto-refresh ON</Tag>
-                          )}
-                        </Text>
-                      )}
-                    </Col>
-                    <Col>
-                      {dashboardData.pendingVerifications?.length > 0 && (
-                        <Button 
-                          type="primary" 
-                          danger
-                          icon={<SafetyOutlined />}
-                          onClick={() => navigate('/admin/verify-device')}
-                          size="small"
-                        >
-                          {dashboardData.pendingVerifications.length} Pending Verifications
-                        </Button>
-                      )}
-                    </Col>
-                  </Row>
-
-                  {/* Financial Overview */}
-                  <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                    <Col span={24}>
-                      <Card 
-                        title={
-                          <Space>
-                            <LineChartOutlined style={{ color: '#6366F1', fontSize: '18px' }} />
-                            <Text strong style={{ fontSize: '16px', color: 'white' }}>Financial Overview</Text>
-                          </Space>
-                        }
-                        style={{ 
-                          borderRadius: '12px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                          border: '1px solid #2D3748',
-                          background: '#1A2332'
-                        }}
-                        bodyStyle={{ padding: '16px' }}
-                      >
-                        <Row gutter={[16, 16]}>
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Revenue</Text>}
-                                value={dashboardData.financialStats.totalRevenue || 0} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-                          
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Sales</Text>}
-                                value={dashboardData.financialStats.totalSales || 0} 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Net Profit</Text>}
-                                value={dashboardData.financialStats.netProfit || 0} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-
-                          <Col xs={24} sm={12} md={8} lg={6}>
-                            <Card 
-                              size="small" 
-                              style={{ 
-                                background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-                                border: 'none',
-                                borderRadius: '8px'
-                              }}
-                              bodyStyle={{ padding: '12px', textAlign: 'center' }}
-                            >
-                              <Statistic 
-                                title={<Text style={{ color: 'white', fontSize: '12px' }}>Outstanding Credit</Text>}
-                                value={dashboardData.financialStats.outstandingCredit || 0} 
-                                prefix="KES" 
-                                precision={0}
-                                valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
-                              />
-                            </Card>
-                          </Col>
-                        </Row>
-                      </Card>
-                    </Col>
-                  </Row>
-
-                  {/* Alerts Section */}
-                  <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                    <Col span={24}>
-                      {dashboardData.businessStats.lowStockCount > 0 && (
-                        <Alert
-                          message={`${dashboardData.businessStats.lowStockCount} products are low on stock`}
-                          description="Some products need to be reordered to avoid stockouts."
-                          type="warning"
-                          showIcon
-                          action={
-                            <Button size="small" type="primary" onClick={() => navigate('/admin/inventory')}>
-                              View Inventory
-                            </Button>
-                          }
-                          style={{ marginBottom: 8, borderRadius: '8px' }}
-                        />
-                      )}
-                      {dashboardData.financialStats.outstandingCredit > 0 && (
-                        <Alert
-                          message={`Outstanding credit: ${formatCurrency(dashboardData.financialStats.outstandingCredit)}`}
-                          description="Monitor credit collection and follow up with customers."
-                          type="info"
-                          showIcon
-                          action={
-                            <Button size="small" type="primary" onClick={() => navigate('/admin/credits')}>
-                              View Credits
-                            </Button>
-                          }
-                          style={{ marginBottom: 8, borderRadius: '8px' }}
-                        />
-                      )}
-                      {dashboardData.pendingVerifications?.length > 0 && (
-                        <Alert
-                          message={`${dashboardData.pendingVerifications.length} device(s) pending verification`}
-                          description="New devices are waiting for your approval."
-                          type="error"
-                          showIcon
-                          icon={<SafetyOutlined />}
-                          action={
-                            <Button size="small" type="primary" onClick={() => navigate('/admin/verify-device')}>
-                              Review
-                            </Button>
-                          }
-                          style={{ borderRadius: '8px' }}
-                        />
-                      )}
-                    </Col>
-                  </Row>
-
-                  {/* Main Content Grid */}
-                  <Row gutter={[16, 16]}>
-                    <Col xs={24} lg={12}>
-                      <Card 
-                        title={
-                          <Space>
-                            <ShoppingCartOutlined style={{ color: '#6366F1' }} />
-                            <Text strong style={{ color: 'white' }}>Recent Transactions</Text>
-                            <Badge count={dashboardData.recentTransactions.length} showZero />
-                          </Space>
-                        }
-                        extra={
-                          <Space>
-                            <Search
-                              placeholder="Search..."
-                              size="small"
-                              style={{ width: 120 }}
-                              value={searchTerm}
-                              onChange={(e) => setSearchTerm(e.target.value)}
-                              allowClear
-                            />
-                            <Button 
-                              size="small" 
-                              type="primary" 
-                              onClick={() => navigate('/admin/transactions')}
-                            >
-                              View All
-                            </Button>
-                          </Space>
-                        }
-                        style={{ 
-                          borderRadius: '12px', 
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                          border: '1px solid #2D3748',
-                          background: '#1A2332'
-                        }}
-                      >
-                        <Table 
-                          dataSource={dashboardData.recentTransactions} 
-                          columns={salesColumns} 
-                          pagination={{ pageSize: 5, size: 'small' }}
-                          size="small"
-                          rowKey={(record) => record._id || record.id || `txn-${Math.random()}`}
-                          locale={{ emptyText: 'No recent transactions' }}
-                        />
-                      </Card>
-                    </Col>
-
-                    <Col xs={24} lg={12}>
-                      <Card 
-                        title={
-                          <Space>
-                            <WarningOutlined style={{ color: '#ff4d4f' }} />
-                            <Text strong style={{ color: 'white' }}>Low Stock Products</Text>
-                            <Badge 
-                              count={dashboardData.lowStockProducts.length} 
-                              showZero 
-                              style={{ backgroundColor: '#ff4d4f' }} 
-                            />
-                          </Space>
-                        }
-                        extra={
-                          <Button 
-                            size="small" 
-                            onClick={() => navigate('/admin/inventory')}
-                          >
-                            Manage
-                          </Button>
-                        }
-                        style={{ 
-                          borderRadius: '12px', 
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                          border: '1px solid #2D3748',
-                          background: '#1A2332'
-                        }}
-                      >
-                        <Table 
-                          dataSource={dashboardData.lowStockProducts} 
-                          columns={lowStockColumns} 
-                          pagination={false}
-                          size="small"
-                          rowKey={(record) => record._id || record.id || `prod-${Math.random()}`}
-                          locale={{ emptyText: 'All products well stocked' }}
-                        />
-                      </Card>
-                    </Col>
-
-                    <Col xs={24} lg={12}>
-                      <Card 
-                        title={
-                          <Space>
-                            <ProductOutlined style={{ color: '#52c41a' }} />
-                            <Text strong style={{ color: 'white' }}>Top Selling Products</Text>
-                          </Space>
-                        }
-                        extra={
-                          <Button 
-                            size="small" 
-                            type="primary" 
-                            onClick={() => navigate('/admin/products')}
-                          >
-                            View All
-                          </Button>
-                        }
-                        style={{ 
-                          borderRadius: '12px', 
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                          border: '1px solid #2D3748',
-                          background: '#1A2332'
-                        }}
-                      >
-                        <List
-                          dataSource={dashboardData.topProducts}
-                          renderItem={(item, index) => (
-                            <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
-                              <List.Item.Meta
-                                avatar={
-                                  <Avatar 
-                                    size="small" 
-                                    style={{ 
-                                      backgroundColor: index < 3 ? '#6366F1' : '#4A5568',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                  >
-                                    {index + 1}
-                                  </Avatar>
-                                }
-                                title={
-                                  <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
-                                    {item.name || 'Unknown Product'}
-                                  </Text>
-                                }
-                                description={
-                                  <Space direction="vertical" size={0}>
-                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                                      Sold: {item.totalSold || 0} units
-                                    </Text>
-                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                                      Revenue: {formatCurrency(item.totalRevenue || 0)}
-                                    </Text>
-                                  </Space>
-                                }
-                              />
-                            </List.Item>
-                          )}
-                          locale={{ emptyText: 'No product sales data' }}
-                        />
-                      </Card>
-                    </Col>
-
-                    <Col xs={24} lg={12}>
-                      <Card 
-                        title={
-                          <Space>
-                            <ShopOutlined style={{ color: '#9b59b6' }} />
-                            <Text strong style={{ color: 'white' }}>Shop Performance</Text>
-                          </Space>
-                        }
-                        extra={
-                          <Button 
-                            size="small" 
-                            type="primary" 
-                            onClick={() => navigate('/admin/shops')}
-                          >
-                            View All
-                          </Button>
-                        }
-                        style={{ 
-                          borderRadius: '12px', 
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                          border: '1px solid #2D3748',
-                          background: '#1A2332'
-                        }}
-                      >
-                        <List
-                          dataSource={dashboardData.shopPerformance}
-                          renderItem={(item) => (
-                            <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
-                              <List.Item.Meta
-                                avatar={
-                                  <Avatar 
-                                    size="small" 
-                                    style={{ 
-                                      backgroundColor: '#9b59b6',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                  >
-                                    {item.name?.charAt(0)?.toUpperCase() || 'S'}
-                                  </Avatar>
-                                }
-                                title={
-                                  <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
-                                    {item.name || 'Unknown Shop'}
-                                  </Text>
-                                }
-                                description={
-                                  <Space direction="vertical" size={0}>
-                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                                      Transactions: {item.transactions || 0}
-                                    </Text>
-                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                                      Revenue: {formatCurrency(item.revenue || 0)}
-                                    </Text>
-                                  </Space>
-                                }
-                              />
-                            </List.Item>
-                          )}
-                          locale={{ emptyText: 'No shop performance data' }}
-                        />
-                      </Card>
-                    </Col>
-                  </Row>
-                </>
-              )}
-            </>
-          )}
+          {renderContent()}
         </Content>
       </Layout>
     </Layout>
