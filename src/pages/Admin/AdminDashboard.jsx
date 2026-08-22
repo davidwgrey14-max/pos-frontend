@@ -1,4 +1,4 @@
-// src/pages/Admin/AdminDashboard.jsx - FIXED STANDALONE VERSION
+// src/pages/Admin/AdminDashboard.jsx - Connected to Backend API
 import React, { useState, useEffect } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
@@ -64,7 +64,9 @@ const AdminDashboard = () => {
       creditSales: 0,
       nonCreditSales: 0,
       totalCash: 0,
-      totalMpesaBank: 0
+      totalMpesaBank: 0,
+      profitMargin: 0,
+      totalItemsSold: 0
     },
     businessStats: {
       totalProducts: 0,
@@ -132,13 +134,23 @@ const AdminDashboard = () => {
   useEffect(() => {
     fetchDashboardData();
     fetchPendingVerifications();
+    // Start auto-refresh if enabled
+    const intervalId = setInterval(() => {
+      if (filters.autoRefresh) {
+        console.log('🔄 Auto-refreshing dashboard data...');
+        fetchDashboardData();
+        fetchPendingVerifications();
+      }
+    }, 30000);
+    return () => clearInterval(intervalId);
   }, []);
 
-  // Auto-refresh effect
+  // Auto-refresh effect - re-run when autoRefresh toggle changes
   useEffect(() => {
     let intervalId;
     if (filters.autoRefresh) {
       intervalId = setInterval(() => {
+        console.log('🔄 Auto-refreshing dashboard data...');
         fetchDashboardData();
         fetchPendingVerifications();
       }, 30000);
@@ -148,9 +160,11 @@ const AdminDashboard = () => {
     };
   }, [filters.autoRefresh]);
 
+  // Fetch pending verifications for admin
   const fetchPendingVerifications = async () => {
     try {
       const response = await authAPI.getVerificationRequests();
+      console.log('📋 Pending verifications response:', response);
       if (response?.success) {
         setDashboardData(prev => ({
           ...prev,
@@ -162,18 +176,22 @@ const AdminDashboard = () => {
     }
   };
 
+  // Fetch dashboard data from backend
   const fetchDashboardData = async (customFilters = null) => {
     const activeFilters = customFilters || filters;
+    
+    console.log('🚀 Fetching dashboard data with filters:', activeFilters);
     
     try {
       setLoading(true);
       setRefreshing(true);
       
-      // Fetch shops
+      // Fetch shops first
       const shopsData = await shopAPI.getAll();
+      console.log('🏪 Shops fetched:', shopsData?.length || 0);
       setShops(shopsData || []);
 
-      // Build params
+      // Build params for combined API
       const params = {};
       if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
         params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
@@ -183,11 +201,24 @@ const AdminDashboard = () => {
         params.shopId = activeFilters.shop;
       }
 
-      // Fetch comprehensive data
-      const comprehensiveData = await unifiedAPI.getCombinedTransactions(params);
+      // Fetch combined transaction data from backend
+      console.log('📡 Fetching combined data with params:', params);
+      const response = await unifiedAPI.getCombinedTransactions(params);
+      console.log('📊 Combined data response:', response);
       
-      // Process data
-      const processedData = processDashboardData(comprehensiveData, shopsData);
+      // Extract data from response
+      let data = {};
+      if (response && response.success) {
+        data = response.data || response;
+      } else if (response && !response.success) {
+        console.error('API returned error:', response.message);
+        throw new Error(response.message || 'Failed to fetch data');
+      } else {
+        data = response || {};
+      }
+
+      // Process the data
+      const processedData = processDashboardData(data, shopsData);
       
       setDashboardData(prev => ({
         ...processedData,
@@ -195,101 +226,159 @@ const AdminDashboard = () => {
       }));
       setDataTimestamp(new Date().toISOString());
       
+      console.log('✅ Dashboard data processed successfully');
+      
     } catch (error) {
-      console.error('Dashboard fetch failed:', error);
-      message.error('Failed to load dashboard data');
+      console.error('💥 Dashboard fetch failed:', error);
+      message.error(error.message || 'Failed to load dashboard data');
+      
+      // Set default/empty data on error
+      setDashboardData(prev => ({
+        ...prev,
+        financialStats: getDefaultStats(),
+        businessStats: {
+          totalProducts: 0,
+          totalShops: 0,
+          totalCashiers: 0,
+          lowStockCount: 0,
+          activeCredits: 0
+        },
+        recentTransactions: [],
+        lowStockProducts: [],
+        topProducts: [],
+        shopPerformance: []
+      }));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  // Process dashboard data from API response
   const processDashboardData = (data, shops) => {
-    const transactions = data?.salesWithProfit || [];
+    // Extract data with fallbacks
+    const transactions = data?.salesWithProfit || data?.transactions || [];
+    const financialStats = data?.financialStats || data?.summary || data?.financialStats || getDefaultStats();
     const products = data?.products || [];
     const cashiers = data?.cashiers || [];
     const credits = data?.credits || [];
     const expenses = data?.expenses || [];
+    const shopPerformanceData = data?.performance?.shopPerformance || [];
     
-    // Calculate financial stats
-    const financialStats = {
-      totalRevenue: transactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0),
-      totalSales: transactions.length,
-      netProfit: transactions.reduce((sum, t) => sum + (t.profit || 0), 0),
-      outstandingCredit: credits.reduce((sum, c) => sum + (c.balanceDue || 0), 0),
-      totalExpenses: expenses.reduce((sum, e) => sum + (e.amount || 0), 0) || 0,
-      grossProfit: transactions.reduce((sum, t) => sum + (t.grossProfit || 0), 0),
-      creditSales: transactions.filter(t => t.isCreditTransaction).length,
-      nonCreditSales: transactions.filter(t => !t.isCreditTransaction).length,
-      totalCash: transactions.filter(t => t.paymentMethod === 'cash').reduce((sum, t) => sum + (t.totalAmount || 0), 0),
-      totalMpesaBank: transactions.filter(t => t.paymentMethod === 'mpesa' || t.paymentMethod === 'bank').reduce((sum, t) => sum + (t.totalAmount || 0), 0)
-    };
+    // Get shop names for display
+    const shopMap = {};
+    if (shops && shops.length > 0) {
+      shops.forEach(shop => {
+        shopMap[shop._id] = shop.name;
+      });
+    }
 
-    // Recent transactions
-    const recentTransactions = transactions
-      .sort((a, b) => new Date(b.saleDate || b.createdAt) - new Date(a.saleDate || a.createdAt))
-      .slice(0, 10);
+    // Process transactions for display
+    const recentTransactions = (transactions || [])
+      .slice(0, 10)
+      .map(t => ({
+        ...t,
+        _id: t._id || t.id || `txn-${Date.now()}`,
+        transactionNumber: t.transactionNumber || t._id?.toString().substring(0, 8) || 'N/A',
+        saleDate: t.saleDate || t.createdAt || new Date().toISOString(),
+        customerName: t.customerName || 'Walk-in',
+        totalAmount: t.totalAmount || 0,
+        shop: t.shopName || shopMap[t.shop] || t.shop || 'Unknown',
+        profit: t.profit || 0
+      }));
 
     // Low stock products
-    const lowStockProducts = products
+    const lowStockProducts = (products || [])
       .filter(p => (p.currentStock || 0) <= (p.minStockLevel || 5))
-      .slice(0, 5);
+      .slice(0, 5)
+      .map(p => ({
+        ...p,
+        _id: p._id || p.id || `prod-${Date.now()}`,
+        name: p.name || 'Unknown Product',
+        currentStock: p.currentStock || 0,
+        minStockLevel: p.minStockLevel || 5
+      }));
 
-    // Top products
-    const productMap = {};
-    transactions.forEach(t => {
-      t.items?.forEach(item => {
-        const id = item.productId?.toString() || item.productName;
-        if (!productMap[id]) {
-          productMap[id] = { 
-            name: item.productName || 'Unknown', 
-            totalSold: 0, 
-            totalRevenue: 0,
-            totalProfit: 0
+    // Top products from API or calculate
+    let topProducts = data?.performance?.topProducts || [];
+    if (!topProducts || topProducts.length === 0) {
+      // Calculate from transactions
+      const productMap = {};
+      (transactions || []).forEach(t => {
+        t.items?.forEach(item => {
+          const id = item.productId?.toString() || item.productName || 'unknown';
+          if (!productMap[id]) {
+            productMap[id] = { 
+              name: item.productName || 'Unknown Product', 
+              totalSold: 0, 
+              totalRevenue: 0,
+              totalProfit: 0
+            };
+          }
+          const quantity = item.quantity || 1;
+          const revenue = item.totalPrice || (item.price * quantity) || 0;
+          const cost = (item.buyingPrice || 0) * quantity;
+          productMap[id].totalSold += quantity;
+          productMap[id].totalRevenue += revenue;
+          productMap[id].totalProfit += (revenue - cost);
+        });
+      });
+      topProducts = Object.values(productMap)
+        .sort((a, b) => b.totalRevenue - a.totalRevenue)
+        .slice(0, 5);
+    }
+
+    // Shop performance - use from API or calculate
+    let shopPerformance = shopPerformanceData;
+    if (!shopPerformance || shopPerformance.length === 0) {
+      // Calculate from transactions
+      const shopMapPerf = {};
+      (transactions || []).forEach(t => {
+        const shopId = t.shop || t.shopId || 'unknown';
+        if (!shopMapPerf[shopId]) {
+          shopMapPerf[shopId] = { 
+            name: shopMap[shopId] || t.shopName || 'Unknown Shop', 
+            revenue: 0, 
+            transactions: 0,
+            profit: 0
           };
         }
-        const quantity = item.quantity || 1;
-        const revenue = item.totalPrice || (item.price * quantity);
-        const cost = (item.buyingPrice || 0) * quantity;
-        productMap[id].totalSold += quantity;
-        productMap[id].totalRevenue += revenue;
-        productMap[id].totalProfit += (revenue - cost);
+        shopMapPerf[shopId].revenue += t.totalAmount || 0;
+        shopMapPerf[shopId].transactions += 1;
+        shopMapPerf[shopId].profit += t.profit || 0;
       });
-    });
-    const topProducts = Object.values(productMap)
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .slice(0, 5);
+      shopPerformance = Object.values(shopMapPerf)
+        .sort((a, b) => b.revenue - a.revenue);
+    }
 
-    // Shop performance
-    const shopMap = {};
-    transactions.forEach(t => {
-      const shopId = t.shop || t.shopId;
-      if (!shopId) return;
-      if (!shopMap[shopId]) {
-        const shop = shops?.find(s => s._id?.toString() === shopId?.toString()) || { name: 'Unknown' };
-        shopMap[shopId] = { 
-          name: shop.name || 'Unknown', 
-          revenue: 0, 
-          transactions: 0,
-          profit: 0
-        };
-      }
-      shopMap[shopId].revenue += t.totalAmount || 0;
-      shopMap[shopId].transactions += 1;
-      shopMap[shopId].profit += t.profit || 0;
-    });
-    const shopPerformance = Object.values(shopMap)
-      .sort((a, b) => b.revenue - a.revenue);
+    // Build business stats
+    const businessStats = {
+      totalProducts: products?.length || 0,
+      totalShops: shops?.length || 0,
+      totalCashiers: cashiers?.length || 0,
+      lowStockCount: (products || []).filter(p => (p.currentStock || 0) <= (p.minStockLevel || 5)).length,
+      activeCredits: (credits || []).filter(c => c.status !== 'paid' && (c.balanceDue || 0) > 0).length
+    };
+
+    // Build financial stats with defaults
+    const enhancedFinancialStats = {
+      totalRevenue: financialStats.totalRevenue || 0,
+      totalSales: financialStats.totalSales || financialStats.totalRevenueCount || 0,
+      netProfit: financialStats.netProfit || financialStats.totalProfit || 0,
+      outstandingCredit: financialStats.outstandingCredit || 0,
+      totalExpenses: financialStats.totalExpenses || 0,
+      grossProfit: financialStats.grossProfit || financialStats.totalProfit || 0,
+      creditSales: financialStats.creditSales || 0,
+      nonCreditSales: financialStats.nonCreditSales || 0,
+      totalCash: financialStats.totalCash || 0,
+      totalMpesaBank: financialStats.totalMpesaBank || 0,
+      profitMargin: financialStats.profitMargin || 0,
+      totalItemsSold: financialStats.totalItemsSold || 0
+    };
 
     return {
-      financialStats,
-      businessStats: {
-        totalProducts: products.length,
-        totalShops: shops?.length || 0,
-        totalCashiers: cashiers.length,
-        lowStockCount: lowStockProducts.length,
-        activeCredits: credits.filter(c => c.status !== 'paid' && (c.balanceDue || 0) > 0).length
-      },
+      financialStats: enhancedFinancialStats,
+      businessStats,
       recentTransactions,
       lowStockProducts,
       topProducts,
@@ -297,12 +386,30 @@ const AdminDashboard = () => {
     };
   };
 
+  // Default stats
+  const getDefaultStats = () => ({
+    totalRevenue: 0,
+    totalSales: 0,
+    netProfit: 0,
+    outstandingCredit: 0,
+    totalExpenses: 0,
+    grossProfit: 0,
+    creditSales: 0,
+    nonCreditSales: 0,
+    totalCash: 0,
+    totalMpesaBank: 0,
+    profitMargin: 0,
+    totalItemsSold: 0
+  });
+
+  // Handle filter changes
   const handleFilterChange = (key, value) => {
     const newFilters = { ...filters, [key]: value };
     setFilters(newFilters);
     fetchDashboardData(newFilters);
   };
 
+  // Quick refresh
   const quickRefresh = async () => {
     setRefreshing(true);
     try {
@@ -316,6 +423,7 @@ const AdminDashboard = () => {
     }
   };
 
+  // Handle logout
   const handleLogout = () => {
     Modal.confirm({
       title: 'Confirm Logout',
@@ -330,8 +438,9 @@ const AdminDashboard = () => {
     });
   };
 
+  // Format currency
   const formatCurrency = (amount) => {
-    if (amount === null || amount === undefined) return 'KES 0';
+    if (amount === null || amount === undefined || isNaN(amount)) return 'KES 0';
     return `KES ${Number(amount).toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   };
 
@@ -360,7 +469,7 @@ const AdminDashboard = () => {
       dataIndex: 'totalAmount', 
       key: 'totalAmount', 
       render: (amount) => (
-        <Tag color="green">{formatCurrency(amount)}</Tag>
+        <Tag color={amount > 0 ? 'green' : 'red'}>{formatCurrency(amount)}</Tag>
       )
     },
     { 
@@ -676,7 +785,7 @@ const AdminDashboard = () => {
                         >
                           <Statistic 
                             title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Revenue</Text>}
-                            value={dashboardData.financialStats.totalRevenue} 
+                            value={dashboardData.financialStats.totalRevenue || 0} 
                             prefix="KES" 
                             precision={0}
                             valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
@@ -696,7 +805,7 @@ const AdminDashboard = () => {
                         >
                           <Statistic 
                             title={<Text style={{ color: 'white', fontSize: '12px' }}>Total Sales</Text>}
-                            value={dashboardData.financialStats.totalSales} 
+                            value={dashboardData.financialStats.totalSales || 0} 
                             precision={0}
                             valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
                           />
@@ -715,7 +824,7 @@ const AdminDashboard = () => {
                         >
                           <Statistic 
                             title={<Text style={{ color: 'white', fontSize: '12px' }}>Net Profit</Text>}
-                            value={dashboardData.financialStats.netProfit} 
+                            value={dashboardData.financialStats.netProfit || 0} 
                             prefix="KES" 
                             precision={0}
                             valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
@@ -735,7 +844,7 @@ const AdminDashboard = () => {
                         >
                           <Statistic 
                             title={<Text style={{ color: 'white', fontSize: '12px' }}>Outstanding Credit</Text>}
-                            value={dashboardData.financialStats.outstandingCredit} 
+                            value={dashboardData.financialStats.outstandingCredit || 0} 
                             prefix="KES" 
                             precision={0}
                             valueStyle={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}
@@ -832,7 +941,7 @@ const AdminDashboard = () => {
                       columns={salesColumns} 
                       pagination={{ pageSize: 5, size: 'small' }}
                       size="small"
-                      rowKey="_id"
+                      rowKey={(record) => record._id || record.id || `txn-${Math.random()}`}
                       locale={{ emptyText: 'No recent transactions' }}
                     />
                   </Card>
@@ -864,7 +973,7 @@ const AdminDashboard = () => {
                       columns={lowStockColumns} 
                       pagination={false}
                       size="small"
-                      rowKey="_id"
+                      rowKey={(record) => record._id || record.id || `prod-${Math.random()}`}
                       locale={{ emptyText: 'All products well stocked' }}
                     />
                   </Card>
@@ -906,16 +1015,16 @@ const AdminDashboard = () => {
                             }
                             title={
                               <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
-                                {item.name}
+                                {item.name || 'Unknown Product'}
                               </Text>
                             }
                             description={
                               <Space direction="vertical" size={0}>
                                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                                  Sold: {item.totalSold} units
+                                  Sold: {item.totalSold || 0} units
                                 </Text>
                                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                                  Revenue: {formatCurrency(item.totalRevenue)}
+                                  Revenue: {formatCurrency(item.totalRevenue || 0)}
                                 </Text>
                               </Space>
                             }
@@ -963,16 +1072,16 @@ const AdminDashboard = () => {
                             }
                             title={
                               <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
-                                {item.name}
+                                {item.name || 'Unknown Shop'}
                               </Text>
                             }
                             description={
                               <Space direction="vertical" size={0}>
                                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                                  Transactions: {item.transactions}
+                                  Transactions: {item.transactions || 0}
                                 </Text>
                                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                                  Revenue: {formatCurrency(item.revenue)}
+                                  Revenue: {formatCurrency(item.revenue || 0)}
                                 </Text>
                               </Space>
                             }
