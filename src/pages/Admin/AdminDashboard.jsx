@@ -1,3 +1,10 @@
+// src/pages/Admin/AdminDashboard.jsx - Enhanced with Complete Financial Overview
+import React, { useState, useEffect } from 'react';
+import { 
+  Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
+  Button, Modal, Space, Tooltip, message, Badge, Avatar,
+  Dropdown, Input, Select, DatePicker, Switch, Divider, Progress
+} from 'antd';
 import {
   DashboardOutlined,
   UserOutlined,
@@ -28,7 +35,15 @@ import {
   WalletOutlined,
   PercentageOutlined,
   CalculatorOutlined,
-  CheckCircleOutlined  // <-- ADD THIS LINE
+  CheckCircleOutlined,
+  EyeOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined,
+  DownloadOutlined,
+  PrinterOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
