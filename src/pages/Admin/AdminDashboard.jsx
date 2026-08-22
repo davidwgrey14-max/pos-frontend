@@ -187,83 +187,91 @@ const AdminDashboard = () => {
     }
   };
 
+
   // Fetch dashboard data from backend
-  const fetchDashboardData = async (customFilters = null) => {
-    const activeFilters = customFilters || filters;
+const fetchDashboardData = async (customFilters = null) => {
+  const activeFilters = customFilters || filters;
+  
+  console.log('🚀 Fetching dashboard data with filters:', activeFilters);
+  
+  try {
+    setLoading(true);
+    setRefreshing(true);
     
-    console.log('🚀 Fetching dashboard data with filters:', activeFilters);
+    // Fetch shops first
+    const shopsData = await shopAPI.getAll();
+    console.log('🏪 Shops fetched:', shopsData?.length || 0);
+    setShops(shopsData || []);
+
+    // Build params for combined API
+    const params = {};
+    if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
+      params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
+      params.endDate = activeFilters.dateRange[1].format('YYYY-MM-DD');
+    }
+    if (activeFilters.shop && activeFilters.shop !== 'all') {
+      params.shopId = activeFilters.shop;
+    }
+
+    // Fetch combined transaction data from backend
+    console.log('📡 Fetching combined data with params:', params);
+    const response = await unifiedAPI.getCombinedTransactions(params);
+    console.log('📊 Combined data response:', response);
     
-    try {
-      setLoading(true);
-      setRefreshing(true);
-      
-      // Fetch shops first
-      const shopsData = await shopAPI.getAll();
-      console.log('🏪 Shops fetched:', shopsData?.length || 0);
-      setShops(shopsData || []);
-
-      // Build params for combined API
-      const params = {};
-      if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
-        params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
-        params.endDate = activeFilters.dateRange[1].format('YYYY-MM-DD');
-      }
-      if (activeFilters.shop && activeFilters.shop !== 'all') {
-        params.shopId = activeFilters.shop;
-      }
-
-      // Fetch combined transaction data from backend
-      console.log('📡 Fetching combined data with params:', params);
-      const response = await unifiedAPI.getCombinedTransactions(params);
-      console.log('📊 Combined data response:', response);
-      
-      // Extract data from response
-      let data = {};
-      if (response && response.success) {
+    // === FIXED: Extract data from response ===
+    let data = {};
+    if (response) {
+      // Check if response has a success property
+      if (response.success === true) {
         data = response.data || response;
-      } else if (response && !response.success) {
+      } else if (response.success === false) {
         console.error('API returned error:', response.message);
         throw new Error(response.message || 'Failed to fetch data');
       } else {
-        data = response || {};
+        // No success property - assume the response itself is the data
+        data = response;
       }
-
-      // Process the data
-      const processedData = processDashboardData(data, shopsData);
-      
-      setDashboardData(prev => ({
-        ...processedData,
-        pendingVerifications: prev.pendingVerifications || []
-      }));
-      setDataTimestamp(new Date().toISOString());
-      
-      console.log('✅ Dashboard data processed successfully');
-      
-    } catch (error) {
-      console.error('💥 Dashboard fetch failed:', error);
-      message.error(error.message || 'Failed to load dashboard data');
-      
-      // Set default/empty data on error
-      setDashboardData(prev => ({
-        ...prev,
-        financialStats: getDefaultStats(),
-        businessStats: {
-          totalProducts: 0,
-          totalShops: 0,
-          totalCashiers: 0,
-          lowStockCount: 0,
-          activeCredits: 0
-        },
-        recentTransactions: [],
-        lowStockProducts: [],
-        topProducts: [],
-        shopPerformance: []
-      }));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    } else {
+      // Response is null/undefined
+      data = {};
     }
-  };
+
+    // Process the data
+    const processedData = processDashboardData(data, shopsData);
+    
+    setDashboardData(prev => ({
+      ...processedData,
+      pendingVerifications: prev.pendingVerifications || []
+    }));
+    setDataTimestamp(new Date().toISOString());
+    
+    console.log('✅ Dashboard data processed successfully');
+    
+  } catch (error) {
+    console.error('💥 Dashboard fetch failed:', error);
+    message.error(error.message || 'Failed to load dashboard data');
+    
+    // Set default/empty data on error
+    setDashboardData(prev => ({
+      ...prev,
+      financialStats: getDefaultStats(),
+      businessStats: {
+        totalProducts: 0,
+        totalShops: 0,
+        totalCashiers: 0,
+        lowStockCount: 0,
+        activeCredits: 0
+      },
+      recentTransactions: [],
+      lowStockProducts: [],
+      topProducts: [],
+      shopPerformance: []
+    }));
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
 
   // Process dashboard data from API response
   const processDashboardData = (data, shops) => {
