@@ -43,9 +43,7 @@ import {
   CreditCardOutlined,
   RiseOutlined,
   FallOutlined,
-  CalendarOutlined,
-  DollarOutlined,
-  CalculatorOutlined
+  CalendarOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { transactionAPI, creditAPI, unifiedAPI } from '../../services/api';
@@ -493,6 +491,7 @@ const CashierManagement = () => {
   const [editingCashier, setEditingCashier] = useState(null);
   const [selectedCashierForAssignment, setSelectedCashierForAssignment] = useState(null);
   const [connectionError, setConnectionError] = useState(false);
+  const [errorDetails, setErrorDetails] = useState(null);
   const [loading, setLoading] = useState({
     table: false,
     form: false,
@@ -514,22 +513,39 @@ const CashierManagement = () => {
     lastFetch: null
   });
 
-  // Create API instance
+  // Create API instance with better error handling
   const createApiInstance = () => {
     const instance = axios.create({
       baseURL: process.env.REACT_APP_API_URL || 'https://back-pos.vercel.app',
-      timeout: 10000,
+      timeout: 15000,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       }
     });
+
+    // Add auth token if available
+    const token = localStorage.getItem('sessionToken') || 
+                  localStorage.getItem('authToken') ||
+                  localStorage.getItem('adminToken');
+    if (token) {
+      instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    }
 
     instance.interceptors.response.use(
       (response) => response,
       (error) => {
         if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
           setConnectionError(true);
+          setErrorDetails('Network error - cannot reach server');
           message.error('Cannot connect to server. Please check if the backend is running.');
+        } else if (error.response?.status === 401) {
+          message.error('Session expired. Please login again.');
+          // Redirect to login
+          window.location.href = '/login';
+        } else if (error.response?.status === 500) {
+          setErrorDetails(error.response?.data?.message || 'Internal server error');
+          message.error('Server error. Please try again later.');
         }
         return Promise.reject(error);
       }
@@ -538,32 +554,55 @@ const CashierManagement = () => {
     return instance;
   };
 
-  // Fetch cashiers
+  // Fetch cashiers with fallback
   const fetchCashiers = useCallback(async (forceRefresh = false) => {
     try {
+      // Check cache
       const cacheValid = cashiersCache.current.lastFetch && 
                        (Date.now() - cashiersCache.current.lastFetch < 30000);
       
-      if (cacheValid && !forceRefresh) {
+      if (cacheValid && !forceRefresh && cashiersCache.current.data.length > 0) {
         setCashiers(cashiersCache.current.data);
         return;
       }
 
       setLoading(prev => ({ ...prev, table: true }));
       setConnectionError(false);
+      setErrorDetails(null);
       
       const api = createApiInstance();
+      
+      // Try to get cashiers
       const response = await api.get('/api/cashiers');
       
       let cashiersData = [];
-      if (response.data && Array.isArray(response.data.data)) {
-        cashiersData = response.data.data;
-      } else if (response.data && Array.isArray(response.data)) {
-        cashiersData = response.data;
-      } else if (Array.isArray(response.data)) {
-        cashiersData = response.data;
+      
+      // Handle different response formats
+      if (response.data) {
+        if (Array.isArray(response.data.data)) {
+          cashiersData = response.data.data;
+        } else if (Array.isArray(response.data)) {
+          cashiersData = response.data;
+        } else if (response.data.cashiers && Array.isArray(response.data.cashiers)) {
+          cashiersData = response.data.cashiers;
+        } else {
+          // Try to extract array from response
+          const dataKeys = Object.keys(response.data);
+          for (const key of dataKeys) {
+            if (Array.isArray(response.data[key])) {
+              cashiersData = response.data[key];
+              break;
+            }
+          }
+        }
       }
       
+      // Ensure we have an array
+      if (!Array.isArray(cashiersData)) {
+        cashiersData = [];
+      }
+      
+      // Enhance cashiers with shop info
       const enhancedCashiers = cashiersData.map(cashier => ({
         ...cashier,
         assignedShops: cashier.assignedShops || [],
@@ -573,20 +612,45 @@ const CashierManagement = () => {
           .filter(a => a.isActive !== false).length > 1
       }));
       
+      // Update cache
       cashiersCache.current = {
         data: enhancedCashiers,
         lastFetch: Date.now()
       };
       
       setCashiers(enhancedCashiers);
+      
+      if (enhancedCashiers.length === 0) {
+        message.info('No cashiers found. Add your first cashier!');
+      }
+      
     } catch (error) {
       console.error('Fetch cashiers error:', error);
+      
+      // Use cached data if available
       if (cashiersCache.current.data.length > 0) {
         setCashiers(cashiersCache.current.data);
         message.warning('Using cached data - could not refresh from server');
-      } else {
-        message.error('Failed to fetch cashiers');
+        return;
       }
+      
+      // Try fallback: fetch from alternative endpoint
+      try {
+        const api = createApiInstance();
+        const fallbackResponse = await api.get('/api/cashiers/list');
+        if (fallbackResponse.data && Array.isArray(fallbackResponse.data)) {
+          setCashiers(fallbackResponse.data);
+          return;
+        }
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+      }
+      
+      // Show error
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to fetch cashiers';
+      setErrorDetails(errorMsg);
+      message.error(errorMsg);
+      setCashiers([]);
     } finally {
       setLoading(prev => ({ ...prev, table: false }));
     }
@@ -603,6 +667,7 @@ const CashierManagement = () => {
       try {
         transactionsData = await unifiedAPI.getCombinedTransactions(params);
       } catch (unifiedError) {
+        console.warn('Unified API failed, trying transactionAPI directly...', unifiedError);
         const rawTransactions = await transactionAPI.getAll(params);
         transactionsData = {
           transactions: rawTransactions,
@@ -623,7 +688,7 @@ const CashierManagement = () => {
       setTransactions(processedData.salesWithProfit || []);
     } catch (error) {
       console.error('Error fetching transactions:', error);
-      message.error('Failed to load transaction data');
+      message.warning('Failed to load transaction data');
       setTransactions([]);
     } finally {
       setLoading(prev => ({ ...prev, analytics: false }));
@@ -657,10 +722,12 @@ const CashierManagement = () => {
     }
   }, []);
 
+  // Initial fetch
   useEffect(() => {
     fetchCashiers();
   }, [fetchCashiers]);
 
+  // Fetch analytics when cashier is selected
   useEffect(() => {
     if (activeTab === 'performance' && selectedCashier) {
       const cashierId = selectedCashier._id;
@@ -827,7 +894,8 @@ const CashierManagement = () => {
           error.response.data.error && error.response.data.error.includes('email')) {
         message.error('Cashier with this email already exists');
       } else {
-        message.error(editingCashier ? 'Failed to update cashier' : 'Failed to add cashier');
+        const errorMsg = error.response?.data?.message || error.message || 'Operation failed';
+        message.error(errorMsg);
       }
     } finally {
       setLoading(prev => ({ ...prev, form: false }));
@@ -849,7 +917,8 @@ const CashierManagement = () => {
           message.success('Cashier deleted successfully');
           fetchCashiers(true);
         } catch (error) {
-          message.error('Failed to delete cashier');
+          const errorMsg = error.response?.data?.message || 'Failed to delete cashier';
+          message.error(errorMsg);
         } finally {
           setLoading(prev => ({ ...prev, action: false }));
         }
@@ -859,6 +928,7 @@ const CashierManagement = () => {
 
   const retryConnection = () => {
     setConnectionError(false);
+    setErrorDetails(null);
     fetchCashiers(true);
     if (activeTab === 'performance' && selectedCashier) {
       fetchTransactions(selectedCashier._id);
@@ -871,13 +941,13 @@ const CashierManagement = () => {
       title: 'Name', 
       dataIndex: 'name', 
       key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
+      sorter: (a, b) => a.name?.localeCompare(b.name || '') || 0,
       render: (name, record) => (
         <Space>
           <Avatar size="small" style={{ backgroundColor: '#1890ff' }}>
-            {name?.charAt(0)?.toUpperCase()}
+            {name?.charAt(0)?.toUpperCase() || '?'}
           </Avatar>
-          <Text strong>{name}</Text>
+          <Text strong>{name || 'Unknown'}</Text>
         </Space>
       )
     },
@@ -885,13 +955,13 @@ const CashierManagement = () => {
       title: 'Email', 
       dataIndex: 'email', 
       key: 'email',
-      sorter: (a, b) => a.email.localeCompare(b.email)
+      sorter: (a, b) => a.email?.localeCompare(b.email || '') || 0
     },
     { 
       title: 'Phone', 
       dataIndex: 'phone', 
       key: 'phone',
-      sorter: (a, b) => a.phone?.localeCompare(b.phone || '')
+      sorter: (a, b) => a.phone?.localeCompare(b.phone || '') || 0
     },
     { 
       title: 'Status', 
@@ -899,7 +969,7 @@ const CashierManagement = () => {
       key: 'status',
       render: (status) => (
         <Tag color={status === 'active' ? 'green' : 'red'}>
-          {status?.toUpperCase()}
+          {status?.toUpperCase() || 'UNKNOWN'}
         </Tag>
       )
     },
@@ -1029,11 +1099,27 @@ const CashierManagement = () => {
       {connectionError && (
         <Alert
           message="Connection Error"
-          description="Cannot connect to the server. Please check if the backend is running."
+          description={
+            <div>
+              <p>Cannot connect to the server.</p>
+              {errorDetails && <p style={{ fontSize: '12px', color: '#666' }}>Error: {errorDetails}</p>}
+              <p style={{ fontSize: '12px', marginTop: 8 }}>
+                Please check:
+                <ul>
+                  <li>Backend server is running</li>
+                  <li>API URL is correct: {process.env.REACT_APP_API_URL || 'https://back-pos.vercel.app'}</li>
+                  <li>You have proper authentication</li>
+                </ul>
+              </p>
+            </div>
+          }
           type="error"
           showIcon
           closable
-          onClose={() => setConnectionError(false)}
+          onClose={() => {
+            setConnectionError(false);
+            setErrorDetails(null);
+          }}
           style={{ marginBottom: 16 }}
           action={
             <Button size="small" type="primary" onClick={retryConnection}>
@@ -1206,9 +1292,9 @@ const CashierManagement = () => {
             <Space direction="vertical" style={{ width: '100%' }}>
               <div style={{ textAlign: 'center', marginBottom: 16 }}>
                 <Avatar size={64} style={{ backgroundColor: '#1890ff', marginBottom: 8 }}>
-                  {editingCashier.name?.charAt(0)?.toUpperCase()}
+                  {editingCashier.name?.charAt(0)?.toUpperCase() || '?'}
                 </Avatar>
-                <Title level={4} style={{ margin: 0 }}>{editingCashier.name}</Title>
+                <Title level={4} style={{ margin: 0 }}>{editingCashier.name || 'Unknown'}</Title>
                 <Text type="secondary">{editingCashier.email}</Text>
               </div>
               
@@ -1224,7 +1310,7 @@ const CashierManagement = () => {
                   <Text strong>Status:</Text>
                   <br />
                   <Tag color={editingCashier.status === 'active' ? 'green' : 'red'}>
-                    {editingCashier.status?.toUpperCase()}
+                    {editingCashier.status?.toUpperCase() || 'UNKNOWN'}
                   </Tag>
                 </Col>
               </Row>
@@ -1238,7 +1324,7 @@ const CashierManagement = () => {
                 <Col span={12}>
                   <Text strong>Role:</Text>
                   <br />
-                  <Tag color="blue">{editingCashier.role?.toUpperCase()}</Tag>
+                  <Tag color="blue">{editingCashier.role?.toUpperCase() || 'CASHIER'}</Tag>
                 </Col>
               </Row>
 
@@ -1395,14 +1481,14 @@ const CashierManagement = () => {
                               color: 'white'
                             }}
                           >
-                            {shop.name.charAt(0).toUpperCase()}
+                            {shop.name?.charAt(0)?.toUpperCase() || '?'}
                           </Avatar>
                         }
                         title={
                           <Space>
-                            <Text strong>{shop.name}</Text>
+                            <Text strong>{shop.name || 'Unknown Shop'}</Text>
                             <Tag color={shop.status === 'active' ? 'green' : 'red'}>
-                              {shop.status?.toUpperCase()}
+                              {shop.status?.toUpperCase() || 'UNKNOWN'}
                             </Tag>
                             {isPrimary && <Tag color="gold">Primary</Tag>}
                           </Space>
