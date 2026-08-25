@@ -1031,11 +1031,12 @@ export const authAPI = {
 };
 
 // ==================== UNIFIED API SERVICE ====================
+// src/services/api.js - FIXED getCombinedTransactions
 
 export const unifiedAPI = {
   getCombinedTransactions: async (params = {}) => {
     try {
-      console.log('🚀 Fetching enhanced combined transactions...', params);
+      console.log('🚀 Fetching combined transactions...', params);
       
       const cacheKey = `combined_transactions_${JSON.stringify(params)}`;
       const cached = cache.get(cacheKey);
@@ -1044,46 +1045,91 @@ export const unifiedAPI = {
         return cached;
       }
       
-      const response = await quickApi.get('/transactions/combined', { params });
+      // Use the metrics endpoint instead of combined
+      const [metricsResponse, transactionsResponse, shopsResponse, cashiersResponse, productsResponse, expensesResponse, creditsResponse] = await Promise.all([
+        quickApi.get('/transactions/metrics', { params }).catch(() => ({ data: {} })),
+        quickApi.get('/transactions', { params }).catch(() => ({ data: [] })),
+        quickApi.get('/shops').catch(() => ({ data: [] })),
+        quickApi.get('/cashiers').catch(() => ({ data: [] })),
+        quickApi.get('/products').catch(() => ({ data: [] })),
+        quickApi.get('/expenses', { params }).catch(() => ({ data: [] })),
+        quickApi.get('/credits', { params }).catch(() => ({ data: [] }))
+      ]);
       
-      const data = response.data?.data || response.data;
+      const metrics = metricsResponse.data?.data || metricsResponse.data || {};
+      const transactions = transactionsResponse.data?.data || transactionsResponse.data || [];
+      const shops = shopsResponse.data?.data || shopsResponse.data || [];
+      const cashiers = cashiersResponse.data?.data || cashiersResponse.data || [];
+      const products = productsResponse.data?.data || productsResponse.data || [];
+      const expenses = expensesResponse.data?.data || expensesResponse.data || [];
+      const credits = creditsResponse.data?.data || creditsResponse.data || [];
       
-      const transactions = data.transactions || 
-                          data.salesWithProfit || 
-                          data.filteredTransactions || 
-                          data.comprehensiveData?.transactions || 
-                          [];
-
-      const expenses = data.expenses || data.comprehensiveData?.expenses || [];
-      const credits = data.credits || data.comprehensiveData?.credits || [];
-      const products = data.products || data.comprehensiveData?.products || [];
-      const shops = data.shops || data.comprehensiveData?.shops || [];
-      const cashiers = data.cashiers || data.comprehensiveData?.cashiers || [];
-
+      // Calculate additional stats
+      let totalRevenue = metrics.totalRevenue || 0;
+      let totalCash = metrics.totalCash || 0;
+      let totalMpesaBank = metrics.totalMpesaBank || 0;
+      let totalItemsSold = metrics.totalItemsSold || 0;
+      let totalCost = metrics.costOfGoodsSold || 0;
+      
+      // If metrics didn't provide values, calculate from transactions
+      if (transactions.length > 0 && totalRevenue === 0) {
+        transactions.forEach(t => {
+          totalRevenue += t.totalAmount || 0;
+          totalItemsSold += t.itemsCount || 0;
+          totalCost += t.cost || 0;
+          if (t.paymentMethod === 'cash') totalCash += t.totalAmount || 0;
+          else if (['mpesa', 'bank'].includes(t.paymentMethod)) totalMpesaBank += t.totalAmount || 0;
+        });
+      }
+      
+      const financialStats = {
+        totalRevenue: totalRevenue || metrics.totalRevenue || 0,
+        totalSales: transactions.length || metrics.totalSales || 0,
+        totalTransactions: transactions.length || metrics.totalTransactions || 0,
+        totalCash: totalCash || metrics.totalCash || 0,
+        totalMpesaBank: totalMpesaBank || metrics.totalMpesaBank || 0,
+        totalItemsSold: totalItemsSold || metrics.totalItemsSold || 0,
+        costOfGoodsSold: totalCost || metrics.costOfGoodsSold || 0,
+        grossProfit: (totalRevenue - totalCost) || metrics.grossProfit || 0,
+        netProfit: (totalRevenue - totalCost) || metrics.netProfit || 0,
+        averageTransactionValue: transactions.length > 0 ? totalRevenue / transactions.length : 0,
+        outstandingCredit: metrics.outstandingCredit || 0,
+        totalExpenses: metrics.totalExpenses || 0,
+        creditSales: metrics.creditSales || 0,
+        nonCreditSales: metrics.nonCreditSales || transactions.length || 0,
+        profitMargin: totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0,
+        grossProfitMargin: totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0,
+        creditCollectionRate: metrics.creditCollectionRate || 0,
+        totalCreditGiven: metrics.totalCreditGiven || 0,
+        recognizedCreditRevenue: metrics.recognizedCreditRevenue || 0
+      };
+      
       const enhancedData = {
         transactions: transactions,
         salesWithProfit: transactions,
         filteredTransactions: transactions,
-        expenses: expenses,
-        credits: credits,
-        products: products,
         shops: shops,
         cashiers: cashiers,
-        summary: data.summary || getDefaultStats(),
-        financialStats: data.financialStats || data.summary || getDefaultStats(),
-        enhancedStats: data.enhancedStats || {
-          salesWithProfit: transactions,
-          financialStats: data.summary || data.financialStats || getDefaultStats()
-        }
+        products: products,
+        expenses: expenses,
+        credits: credits,
+        summary: financialStats,
+        financialStats: financialStats,
+        performance: {
+          topProducts: [],
+          shopPerformance: []
+        },
+        timestamp: new Date().toISOString()
       };
-
+      
       cache.set(cacheKey, enhancedData);
-      console.log('✅ Combined transactions data received');
+      console.log('✅ Combined transactions data assembled');
       return enhancedData;
     } catch (error) {
       console.error('❌ Error fetching combined transactions:', error);
       
-      const fallbackData = {
+      // Return empty data
+      return {
         transactions: [],
         salesWithProfit: [],
         filteredTransactions: [],
@@ -1092,16 +1138,49 @@ export const unifiedAPI = {
         products: [],
         expenses: [],
         credits: [],
-        summary: getDefaultStats(),
-        financialStats: getDefaultStats(),
-        enhancedStats: {
-          salesWithProfit: [],
-          financialStats: getDefaultStats()
+        summary: {
+          totalRevenue: 0,
+          totalSales: 0,
+          totalTransactions: 0,
+          totalCash: 0,
+          totalMpesaBank: 0,
+          totalItemsSold: 0,
+          costOfGoodsSold: 0,
+          grossProfit: 0,
+          netProfit: 0,
+          averageTransactionValue: 0,
+          outstandingCredit: 0,
+          totalExpenses: 0,
+          creditSales: 0,
+          nonCreditSales: 0,
+          profitMargin: 0,
+          grossProfitMargin: 0,
+          creditCollectionRate: 0,
+          totalCreditGiven: 0,
+          recognizedCreditRevenue: 0
         },
-        error: handleApiError(error)
+        financialStats: {
+          totalRevenue: 0,
+          totalSales: 0,
+          totalTransactions: 0,
+          totalCash: 0,
+          totalMpesaBank: 0,
+          totalItemsSold: 0,
+          costOfGoodsSold: 0,
+          grossProfit: 0,
+          netProfit: 0,
+          averageTransactionValue: 0,
+          outstandingCredit: 0,
+          totalExpenses: 0,
+          creditSales: 0,
+          nonCreditSales: 0,
+          profitMargin: 0,
+          grossProfitMargin: 0,
+          creditCollectionRate: 0,
+          totalCreditGiven: 0,
+          recognizedCreditRevenue: 0
+        }
       };
-      
-      return fallbackData;
     }
   }
 };
