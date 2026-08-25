@@ -1,4 +1,4 @@
-// src/App.js - FIXED with manager role support
+// src/App.js - REMOVED device verification route
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { message } from 'antd';
@@ -18,11 +18,10 @@ import Inventory from './pages/Admin/Inventory';
 import ExpenseManagement from './pages/Admin/ExpenseManagement';
 import TransactionReports from './pages/Admin/TransactionReports';
 import CreditManagement from './pages/Admin/CreditManagement';
-import DeviceVerification from './pages/Admin/DeviceVerification';
+// REMOVED: DeviceVerification import
 import ShopSelection from './pages/Cashier/ShopSelection';
 import Cart from './pages/Cashier/Cart';
 import Receipt from './pages/Cashier/Receipt';
-// IMPORT Manager Dashboard
 import ManagerDashboard from './pages/Manager/ManagerDashboard';
 import ManagerDashboardHome from './pages/Manager/ManagerDashboardHome';
 import ManagerLogin from './pages/Manager/ManagerLogin';
@@ -68,7 +67,6 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireManager = false
                 localStorage.getItem('managerToken');
   
   if (!token) {
-    // Redirect to the appropriate login page based on the route
     if (requireManager) {
       return <Navigate to="/manager/login" state={{ from: location }} replace />;
     }
@@ -116,32 +114,7 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireManager = false
     return <Navigate to="/cashier/shops" replace />;
   }
 
-  // Check device verification
-  const isDeviceVerified = localStorage.getItem('deviceVerified') === 'true';
-  if (!isDeviceVerified) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#0F172A', padding: '20px' }}>
-        <div style={{ background: '#1E293B', padding: '40px', borderRadius: '12px', maxWidth: '500px', textAlign: 'center', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🔐</div>
-          <h2 style={{ color: 'white', marginBottom: 8 }}>Device Verification Required</h2>
-          <p style={{ color: 'rgba(255,255,255,0.7)', marginBottom: 16 }}>
-            Please wait for admin approval to access this device.
-          </p>
-          <button onClick={() => {
-            localStorage.removeItem('sessionToken');
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('cashierToken');
-            localStorage.removeItem('adminToken');
-            localStorage.removeItem('managerToken');
-            localStorage.removeItem('deviceVerified');
-            window.location.href = '/cashier-login';
-          }} style={{ marginTop: 20, padding: '10px 24px', background: '#EF4444', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
-            Logout & Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // REMOVED: Device verification check
 
   // Get session timeout from user data
   let sessionTimeout = 5; // default 5 minutes
@@ -187,7 +160,7 @@ const App = () => {
             <Route path="expenses" element={<ExpenseManagement />} />
             <Route path="transactions" element={<TransactionReports />} />
             <Route path="credits" element={<CreditManagement />} />
-            <Route path="verify-device" element={<DeviceVerification />} />
+            {/* REMOVED: verify-device route */}
             <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Route>
 

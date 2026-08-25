@@ -597,64 +597,50 @@ const AdminDashboard = () => {
     { title: 'Min Level', dataIndex: 'minStockLevel', key: 'minStockLevel', render: (val) => val || 5 }
   ];
 
-  // Menu items for sidebar with navigation
-  const menuItems = [
-    { 
-      key: 'dashboard', 
-      icon: <DashboardOutlined />, 
-      label: 'Dashboard' 
-    },
-    { 
-      key: 'products', 
-      icon: <ProductOutlined />, 
-      label: 'Products' 
-    },
-    { 
-      key: 'shops', 
-      icon: <ShopOutlined />, 
-      label: 'Shops' 
-    },
-    { 
-      key: 'cashiers', 
-      icon: <UserOutlined />, 
-      label: 'Cashiers' 
-    },
-    { 
-      key: 'transactions', 
-      icon: <BarChartOutlined />, 
-      label: 'Transactions' 
-    },
-    { 
-      key: 'expenses', 
-      icon: <DollarOutlined />, 
-      label: 'Expenses' 
-    },
-    { 
-      key: 'inventory', 
-      icon: <AppstoreOutlined />, 
-      label: 'Inventory' 
-    },
-    { 
-      key: 'credits', 
-      icon: <CreditCardOutlined />, 
-      label: 'Credits' 
-    },
-    { 
-      key: 'verify-device', 
-      icon: <SafetyOutlined />, 
-      label: (
-        <span>
-          Device Verify
-          {dashboardData.pendingVerifications?.length > 0 && (
-            <Badge 
-              count={dashboardData.pendingVerifications.length} 
-              style={{ marginLeft: 8, backgroundColor: '#ff4d4f' }}
-            />
-          )}
-        </span>
-      )
-    }
-  ];
+  // Menu items for sidebar - Remove verify-device
+const menuItems = [
+  { 
+    key: 'dashboard', 
+    icon: <DashboardOutlined />, 
+    label: 'Dashboard' 
+  },
+  { 
+    key: 'products', 
+    icon: <ProductOutlined />, 
+    label: 'Products' 
+  },
+  { 
+    key: 'shops', 
+    icon: <ShopOutlined />, 
+    label: 'Shops' 
+  },
+  { 
+    key: 'cashiers', 
+    icon: <UserOutlined />, 
+    label: 'Cashiers' 
+  },
+  { 
+    key: 'transactions', 
+    icon: <BarChartOutlined />, 
+    label: 'Transactions' 
+  },
+  { 
+    key: 'expenses', 
+    icon: <DollarOutlined />, 
+    label: 'Expenses' 
+  },
+  { 
+    key: 'inventory', 
+    icon: <AppstoreOutlined />, 
+    label: 'Inventory' 
+  },
+  { 
+    key: 'credits', 
+    icon: <CreditCardOutlined />, 
+    label: 'Credits' 
+  }
+  // REMOVED: verify-device menu item
+];
 
   // Check if we're on a sub-page (not dashboard)
   const isSubPage = location.pathname !== '/admin/dashboard' && location.pathname !== '/admin';

@@ -1,4 +1,4 @@
-// src/pages/Auth/AdminLogin.jsx - Fixed navigation
+// src/pages/Auth/AdminLogin.jsx - Simplified (No device verification)
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
@@ -20,7 +20,6 @@ import {
   AdminPanelSettings,
   Email,
   Security,
-  ArrowBack,
 } from '@mui/icons-material';
 
 const AdminLogin = () => {
@@ -106,8 +105,6 @@ const AdminLogin = () => {
         code: formData.secureCode
       });
 
-      console.log('Verify response:', response);
-
       if (response.success) {
         setMessage('Login successful! Redirecting...');
         
@@ -117,17 +114,14 @@ const AdminLogin = () => {
           name: 'System Administrator'
         };
 
-        // Store login info in context
-        login(userData, response.token, response.sessionId);
+        login(userData, response.token);
         
-        // Navigate to admin dashboard
-        // In AdminLogin.jsx - handleVerifyCode function
-setTimeout(() => {
-  navigate('/admin/dashboard', { 
-    replace: true,
-    state: { loginSuccess: true }
-  });
-}, 500);
+        setTimeout(() => {
+          navigate('/admin/dashboard', { 
+            replace: true,
+            state: { loginSuccess: true }
+          });
+        }, 500);
       } else {
         setError(response.message || 'Invalid secure code');
       }
@@ -346,7 +340,6 @@ setTimeout(() => {
                       backgroundColor: alpha(colors.admin.light, 0.1),
                     },
                   }}
-                  startIcon={<ArrowBack />}
                 >
                   BACK
                 </Button>
