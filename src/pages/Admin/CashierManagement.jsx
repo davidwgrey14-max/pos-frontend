@@ -593,91 +593,102 @@ const CashierManagement = () => {
     }
   }, []);
 
-  // FIXED: Enhanced fetchTransactions - using processComprehensiveData instead of processSalesData
-  const fetchTransactions = useCallback(async (cashierId = null) => {
-    try {
-      setLoading(prev => ({ ...prev, analytics: true }));
-      console.log('🔄 Fetching transactions for analytics...', { cashierId });
-      
-      const params = {};
-      
-      // Add cashier filter if specific cashier is selected
-      if (cashierId) {
-        params.cashierId = cashierId;
-      }
-      
-      // Use the unified API to get combined transaction data
-      const transactionsData = await unifiedAPI.getCombinedTransactions(params);
-      
-      console.log('✅ Transactions data structure:', {
-        hasTransactions: !!transactionsData.transactions,
-        transactionCount: transactionsData.transactions?.length || 0,
-        hasSalesWithProfit: !!transactionsData.salesWithProfit,
-        salesWithProfitCount: transactionsData.salesWithProfit?.length || 0
-      });
-
-      // Use salesWithProfit if available, otherwise fallback to transactions
-      const salesData = transactionsData.salesWithProfit || transactionsData.transactions || [];
-      
-      // FIXED: Use processComprehensiveData instead of processSalesData
-      const processedData = CalculationUtils.processComprehensiveData({
-        transactions: salesData,
-        expenses: [],
-        credits: [],
-        products: [],
-        shops: [],
-        cashiers: []
-      }, null);
-      
-      setTransactions(processedData.salesWithProfit || []);
-      
-      console.log(`✅ Loaded ${processedData.salesWithProfit?.length || 0} transactions for analytics`);
-      
-    } catch (error) {
-      console.error('❌ Error fetching transactions for analytics:', error);
-      message.error('Failed to load transaction data for analytics');
-      setTransactions([]);
-    } finally {
-      setLoading(prev => ({ ...prev, analytics: false }));
+  // FIXED: Enhanced fetchTransactions with proper API calls
+const fetchTransactions = useCallback(async (cashierId = null) => {
+  try {
+    setLoading(prev => ({ ...prev, analytics: true }));
+    console.log('🔄 Fetching transactions for analytics...', { cashierId });
+    
+    const params = {};
+    
+    // Add cashier filter if specific cashier is selected
+    if (cashierId) {
+      params.cashierId = cashierId;
     }
-  }, []);
-
-  // FIXED: Enhanced fetchCredits with proper data extraction
-  const fetchCredits = useCallback(async (cashierId = null) => {
+    
+    let transactionsData;
+    
+    // Try unified API first
     try {
-      console.log('🔄 Fetching credits data...', { cashierId });
-      
-      const params = {};
-      
-      // Add cashier filter if specific cashier is selected
-      if (cashierId) {
-        params.cashierId = cashierId;
-      }
-      
-      // Use the unified API for credit analysis
-      const creditsData = await unifiedAPI.getCombinedCreditAnalysis(params);
-      
-      // Handle different response formats from the unified API
-      let creditsArray = [];
-      
-      if (creditsData && Array.isArray(creditsData.credits)) {
-        creditsArray = creditsData.credits;
-      } else if (creditsData && Array.isArray(creditsData.creditTransactions)) {
-        creditsArray = creditsData.creditTransactions;
-      } else if (creditsData && Array.isArray(creditsData.data)) {
-        creditsArray = creditsData.data;
-      } else if (Array.isArray(creditsData)) {
-        creditsArray = creditsData;
-      }
-      
-      console.log('✅ Credits received:', creditsArray.length);
-      setCredits(creditsArray);
-    } catch (error) {
-      console.error('❌ Error fetching credits data:', error);
-      message.warning('Failed to load credit data for analytics');
-      setCredits([]);
+      transactionsData = await unifiedAPI.getCombinedTransactions(params);
+    } catch (unifiedError) {
+      console.warn('Unified API failed, trying transactionAPI directly...', unifiedError);
+      // Fallback to transactionAPI
+      const rawTransactions = await transactionAPI.getAll(params);
+      transactionsData = {
+        transactions: rawTransactions,
+        salesWithProfit: rawTransactions
+      };
     }
-  }, []);
+    
+    console.log('✅ Transactions data structure:', {
+      hasTransactions: !!transactionsData.transactions,
+      transactionCount: transactionsData.transactions?.length || 0,
+      hasSalesWithProfit: !!transactionsData.salesWithProfit,
+      salesWithProfitCount: transactionsData.salesWithProfit?.length || 0
+    });
+
+    // Use salesWithProfit if available, otherwise fallback to transactions
+    const salesData = transactionsData.salesWithProfit || transactionsData.transactions || [];
+    
+    // Process the data
+    const processedData = CalculationUtils.processComprehensiveData({
+      transactions: salesData,
+      expenses: [],
+      credits: [],
+      products: [],
+      shops: [],
+      cashiers: []
+    }, null);
+    
+    setTransactions(processedData.salesWithProfit || []);
+    
+    console.log(`✅ Loaded ${processedData.salesWithProfit?.length || 0} transactions for analytics`);
+    
+  } catch (error) {
+    console.error('❌ Error fetching transactions for analytics:', error);
+    message.error('Failed to load transaction data for analytics');
+    setTransactions([]);
+  } finally {
+    setLoading(prev => ({ ...prev, analytics: false }));
+  }
+}, []);
+  // FIXED: Enhanced fetchCredits with proper API calls
+const fetchCredits = useCallback(async (cashierId = null) => {
+  try {
+    console.log('🔄 Fetching credits data...', { cashierId });
+    
+    const params = {};
+    
+    // Add cashier filter if specific cashier is selected
+    if (cashierId) {
+      params.cashierId = cashierId;
+    }
+    
+    // Use creditAPI directly (correct method exists)
+    const creditsData = await creditAPI.getAll(params);
+    
+    // Handle different response formats
+    let creditsArray = [];
+    
+    if (creditsData && Array.isArray(creditsData.credits)) {
+      creditsArray = creditsData.credits;
+    } else if (creditsData && Array.isArray(creditsData.creditTransactions)) {
+      creditsArray = creditsData.creditTransactions;
+    } else if (creditsData && Array.isArray(creditsData.data)) {
+      creditsArray = creditsData.data;
+    } else if (Array.isArray(creditsData)) {
+      creditsArray = creditsData;
+    }
+    
+    console.log('✅ Credits received:', creditsArray.length);
+    setCredits(creditsArray);
+  } catch (error) {
+    console.error('❌ Error fetching credits data:', error);
+    message.warning('Failed to load credit data for analytics');
+    setCredits([]);
+  }
+}, []);
 
   useEffect(() => {
     fetchCashiers();
