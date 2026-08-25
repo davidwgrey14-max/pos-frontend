@@ -1,4 +1,5 @@
-// src/pages/Cashier/ShopSelection.jsx - Without Device Verification
+// src/pages/Cashier/ShopSelection.jsx - Updated
+
 import React, { useState, useEffect } from 'react';
 import {
   Container,
@@ -12,7 +13,9 @@ import {
   Chip,
   Divider,
   Paper,
-  alpha
+  alpha,
+  Tooltip,
+  Badge
 } from '@mui/material';
 import {
   Store,
@@ -21,7 +24,10 @@ import {
   Logout,
   PointOfSale,
   CheckCircle,
-  Warning
+  Warning,
+  Lock,
+  LockOpen,
+  SwapHoriz
 } from '@mui/icons-material';
 import { shopAPI } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
@@ -33,8 +39,8 @@ const ShopSelection = () => {
   const [error, setError] = useState(null);
   const [cashier, setCashier] = useState(null);
   const [selectingShop, setSelectingShop] = useState(null);
+  const [assignedShopIds, setAssignedShopIds] = useState([]);
 
-  // Color scheme matching cashier login
   const colors = {
     primary: {
       main: '#6366F1',
@@ -57,7 +63,7 @@ const ShopSelection = () => {
 
   useEffect(() => {
     initializeCashier();
-    fetchShops();
+    fetchAssignedShops();
   }, []);
 
   const initializeCashier = () => {
@@ -68,47 +74,62 @@ const ShopSelection = () => {
         return;
       }
       setCashier(cashierData);
+      
+      // Check if cashier has assigned shops
+      if (cashierData.assignedShops && cashierData.assignedShops.length > 0) {
+        const shopIds = cashierData.assignedShops.map(shop => shop.shopId);
+        setAssignedShopIds(shopIds);
+      }
     } catch (error) {
       console.error('Error initializing cashier:', error);
       navigate('/cashier/login');
     }
   };
 
-  const fetchShops = async () => {
+  const fetchAssignedShops = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await shopAPI.getAll();
+      const cashierData = JSON.parse(localStorage.getItem('cashierData'));
       
-      // Enhanced data validation with multiple fallbacks
+      // If cashier has assigned shops in localStorage, use those
+      if (cashierData?.assignedShops && cashierData.assignedShops.length > 0) {
+        const assignedShops = cashierData.assignedShops.map(shop => ({
+          _id: shop.shopId,
+          name: shop.name,
+          location: shop.location || 'Location not specified',
+          status: 'active',
+          isPrimary: shop.isPrimary || false,
+          type: shop.type || 'retail'
+        }));
+        setShops(assignedShops);
+        setLoading(false);
+        return;
+      }
+      
+      // Fallback: fetch all shops (legacy mode)
+      const response = await shopAPI.getAll();
       let shopsData = [];
       
       if (response && typeof response === 'object') {
-        // Handle different API response structures
         if (Array.isArray(response.data)) {
           shopsData = response.data;
         } else if (Array.isArray(response)) {
           shopsData = response;
-        } else if (response.data && typeof response.data === 'object') {
-          // Convert object to array if needed
-          shopsData = Object.values(response.data);
         }
       }
       
-      // Ensure we have a valid array
-      const validatedShops = Array.isArray(shopsData) ? shopsData : [];
-      
-      // Filter out invalid shop objects and add safety checks
-      const safeShops = validatedShops
+      const safeShops = shopsData
         .filter(shop => shop && typeof shop === 'object' && shop._id && shop.name)
         .map(shop => ({
-          _id: shop._id || `shop-${Math.random().toString(36).substr(2, 9)}`,
-          name: shop.name || 'Unnamed Shop',
+          _id: shop._id,
+          name: shop.name,
           location: shop.location || 'Location not specified',
           description: shop.description || '',
           status: shop.status || 'active',
-          createdAt: shop.createdAt || new Date().toISOString()
+          createdAt: shop.createdAt || new Date().toISOString(),
+          type: shop.type || 'retail'
         }));
       
       setShops(safeShops);
@@ -120,7 +141,7 @@ const ShopSelection = () => {
     } catch (error) {
       console.error('Error fetching shops:', error);
       setError('Failed to load shops. Please check your connection and try again.');
-      setShops([]); // Ensure shops is always an array
+      setShops([]);
     } finally {
       setLoading(false);
     }
@@ -135,33 +156,33 @@ const ShopSelection = () => {
     setSelectingShop(shop._id);
     
     try {
-      // Validate cashier data
       const cashierData = JSON.parse(localStorage.getItem('cashierData')) || {};
-      if (!cashierData.id && !cashierData._id) {
-        throw new Error('Cashier session expired');
-      }
-
-      // Store selected shop in localStorage with enhanced data
+      
+      // Check if shop is assigned to cashier
+      const isAssigned = cashierData.assignedShops?.some(s => s.shopId === shop._id);
+      
+      // Store selected shop in localStorage
       const updatedCashierData = {
         ...cashierData,
-        lastShop: shop._id,
-        shopName: shop.name,
-        shopLocation: shop.location,
+        selectedShop: shop._id,
+        selectedShopName: shop.name,
+        selectedShopLocation: shop.location,
         selectedAt: new Date().toISOString(),
         shopDescription: shop.description,
-        sessionStart: new Date().toISOString()
+        sessionStart: new Date().toISOString(),
+        hasAssignedAccess: isAssigned || cashierData.role === 'admin'
       };
       
       localStorage.setItem('cashierData', JSON.stringify(updatedCashierData));
       setCashier(updatedCashierData);
       
-      // Show success feedback before navigation
       setTimeout(() => {
         navigate('/cashier/dashboard', { 
           replace: true,
           state: { 
             shopSelected: true,
-            shopName: shop.name 
+            shopName: shop.name,
+            shopId: shop._id
           }
         });
       }, 800);
@@ -182,7 +203,6 @@ const ShopSelection = () => {
       navigate('/cashier/login', { replace: true });
     } catch (error) {
       console.error('Logout error:', error);
-      // Force logout even if API fails
       localStorage.removeItem('cashierData');
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -192,10 +212,9 @@ const ShopSelection = () => {
 
   const handleRetry = () => {
     setError(null);
-    fetchShops();
+    fetchAssignedShops();
   };
 
-  // Loading state
   if (loading) {
     return (
       <Box sx={{ 
@@ -220,7 +239,7 @@ const ShopSelection = () => {
             mb: 1
           }}
         >
-          Loading available shops...
+          Loading your assigned shops...
         </Typography>
         <Typography 
           variant="body2" 
@@ -233,6 +252,9 @@ const ShopSelection = () => {
       </Box>
     );
   }
+
+  const hasMultipleShops = shops.length > 1;
+  const hasSingleShop = shops.length === 1;
 
   return (
     <Container 
@@ -247,7 +269,6 @@ const ShopSelection = () => {
         justifyContent: 'center'
       }}
     >
-      {/* Main Content Card */}
       <Card
         sx={{
           borderRadius: 3,
@@ -258,7 +279,6 @@ const ShopSelection = () => {
           backdropFilter: 'blur(10px)'
         }}
       >
-        {/* Header Section */}
         <Box sx={{ 
           textAlign: 'center', 
           padding: 4,
@@ -317,25 +337,44 @@ const ShopSelection = () => {
               mb: 2
             }}
           >
-            Select a shop to start using the POS system
+            {hasMultipleShops 
+              ? `Select a shop from your ${shops.length} assigned locations` 
+              : hasSingleShop
+              ? 'You are assigned to one shop. Click to start.'
+              : 'No shops assigned. Please contact administrator.'}
           </Typography>
           
-          <Chip 
-            icon={<Store />}
-            label="Please select your working shop"
-            variant="outlined"
-            sx={{ 
-              color: colors.cashier.light,
-              borderColor: alpha(colors.cashier.main, 0.3),
-              backgroundColor: alpha(colors.cashier.main, 0.1),
-              fontWeight: 'medium'
-            }}
-          />
+          {cashier?.canAccessMultipleShops && (
+            <Chip 
+              icon={<SwapHoriz />}
+              label="Multiple Shop Access"
+              variant="outlined"
+              sx={{ 
+                color: colors.cashier.light,
+                borderColor: alpha(colors.cashier.main, 0.3),
+                backgroundColor: alpha(colors.cashier.main, 0.1),
+                fontWeight: 'medium'
+              }}
+            />
+          )}
+          
+          {cashier?.shopCount === 1 && (
+            <Chip 
+              icon={<LockOpen />}
+              label="Single Shop Access"
+              variant="outlined"
+              sx={{ 
+                color: '#F59E0B',
+                borderColor: alpha('#F59E0B', 0.3),
+                backgroundColor: alpha('#F59E0B', 0.1),
+                fontWeight: 'medium'
+              }}
+            />
+          )}
         </Box>
 
         <Divider sx={{ borderColor: alpha('#fff', 0.1) }} />
 
-        {/* Shops Section */}
         <Box sx={{ padding: 4 }}>
           <Typography 
             variant="h5" 
@@ -351,7 +390,7 @@ const ShopSelection = () => {
             }}
           >
             <Store />
-            Available Shops
+            {hasMultipleShops ? 'Your Assigned Shops' : 'Your Shop'}
             <Chip 
               label={shops.length}
               size="small"
@@ -363,7 +402,6 @@ const ShopSelection = () => {
             />
           </Typography>
 
-          {/* Error Display */}
           {error && (
             <Alert 
               severity="error" 
@@ -398,7 +436,6 @@ const ShopSelection = () => {
             </Alert>
           )}
 
-          {/* No Shops Available */}
           {!error && shops.length === 0 ? (
             <Alert
               severity="warning"
@@ -412,172 +449,182 @@ const ShopSelection = () => {
                   color: '#F59E0B'
                 }
               }}
-              action={
-                <Button 
-                  color="inherit" 
-                  size="small" 
-                  onClick={handleRetry}
-                  sx={{
-                    color: 'white',
-                    border: '1px solid rgba(255, 255, 255, 0.3)',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)'
-                    }
-                  }}
-                >
-                  Retry
-                </Button>
-              }
             >
-              No shops available. Please contact administrator or try again.
+              No shops assigned to you. Please contact administrator to assign shops.
             </Alert>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {shops.map((shop, index) => (
-                <Paper
-                  key={shop._id}
-                  sx={{
-                    padding: 3,
-                    borderRadius: 2,
-                    cursor: selectingShop ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.3s ease',
-                    border: `1px solid ${alpha(colors.cashier.main, 0.2)}`,
-                    backgroundColor: selectingShop === shop._id 
-                      ? alpha(colors.cashier.main, 0.15)
-                      : selectingShop
-                      ? alpha(colors.background.paper, 0.3)
-                      : alpha(colors.background.paper, 0.5),
-                    opacity: selectingShop && selectingShop !== shop._id ? 0.6 : 1,
-                    '&:hover': selectingShop ? {} : {
-                      transform: 'translateY(-2px)',
-                      border: `1px solid ${colors.cashier.main}`,
-                      boxShadow: `0 8px 25px ${alpha(colors.cashier.main, 0.2)}`,
-                      backgroundColor: alpha(colors.cashier.main, 0.1)
-                    }
-                  }}
-                  onClick={() => !selectingShop && handleShopSelect(shop)}
-                >
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between' 
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Avatar 
-                        sx={{ 
-                          background: index % 2 === 0 ? colors.primary.gradient : colors.cashier.gradient,
-                          width: 50,
-                          height: 50,
-                          fontWeight: 'bold',
-                          fontSize: '1.2rem'
-                        }}
-                      >
-                        {shop.name.charAt(0).toUpperCase()}
-                      </Avatar>
-                      <Box>
-                        <Typography 
-                          variant="h6" 
-                          sx={{ 
-                            color: 'white',
-                            fontWeight: 'bold',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1
+              {shops.map((shop, index) => {
+                const isPrimary = shop.isPrimary || 
+                  (cashier?.primaryShop?.shopId === shop._id);
+                
+                return (
+                  <Paper
+                    key={shop._id}
+                    sx={{
+                      padding: 3,
+                      borderRadius: 2,
+                      cursor: selectingShop ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.3s ease',
+                      border: `1px solid ${isPrimary ? alpha(colors.cashier.main, 0.4) : alpha(colors.cashier.main, 0.2)}`,
+                      backgroundColor: selectingShop === shop._id 
+                        ? alpha(colors.cashier.main, 0.15)
+                        : isPrimary
+                        ? alpha(colors.cashier.main, 0.1)
+                        : alpha(colors.background.paper, 0.5),
+                      opacity: selectingShop && selectingShop !== shop._id ? 0.6 : 1,
+                      '&:hover': selectingShop ? {} : {
+                        transform: 'translateY(-2px)',
+                        border: `1px solid ${colors.cashier.main}`,
+                        boxShadow: `0 8px 25px ${alpha(colors.cashier.main, 0.2)}`,
+                        backgroundColor: alpha(colors.cashier.main, 0.1)
+                      }
+                    }}
+                    onClick={() => !selectingShop && handleShopSelect(shop)}
+                  >
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between' 
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Badge
+                          color="primary"
+                          badgeContent={isPrimary ? 'Primary' : null}
+                          anchorOrigin={{
+                            vertical: 'top',
+                            horizontal: 'right'
                           }}
                         >
-                          {shop.name}
-                          {shop.status === 'active' && (
-                            <Chip 
-                              label="Active"
-                              size="small"
-                              sx={{ 
-                                backgroundColor: alpha(colors.cashier.main, 0.2),
-                                color: colors.cashier.light,
-                                fontSize: '0.7rem',
-                                height: 20
-                              }}
-                            />
-                          )}
-                        </Typography>
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            mb: 0.5
-                          }}
-                        >
-                          📍 {shop.location}
-                        </Typography>
-                        {shop.description && (
-                          <Typography 
-                            variant="caption" 
+                          <Avatar 
                             sx={{ 
-                              color: 'rgba(255, 255, 255, 0.5)',
-                              fontStyle: 'italic'
+                              background: isPrimary ? colors.cashier.gradient : colors.primary.gradient,
+                              width: 50,
+                              height: 50,
+                              fontWeight: 'bold',
+                              fontSize: '1.2rem'
                             }}
                           >
-                            {shop.description}
+                            {shop.name.charAt(0).toUpperCase()}
+                          </Avatar>
+                        </Badge>
+                        <Box>
+                          <Typography 
+                            variant="h6" 
+                            sx={{ 
+                              color: 'white',
+                              fontWeight: 'bold',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1
+                            }}
+                          >
+                            {shop.name}
+                            {shop.status === 'active' && (
+                              <Chip 
+                                label="Active"
+                                size="small"
+                                sx={{ 
+                                  backgroundColor: alpha(colors.cashier.main, 0.2),
+                                  color: colors.cashier.light,
+                                  fontSize: '0.7rem',
+                                  height: 20
+                                }}
+                              />
+                            )}
+                            {isPrimary && (
+                              <Chip 
+                                label="Primary"
+                                size="small"
+                                sx={{ 
+                                  backgroundColor: alpha('#F59E0B', 0.2),
+                                  color: '#F59E0B',
+                                  fontSize: '0.7rem',
+                                  height: 20
+                                }}
+                              />
+                            )}
                           </Typography>
-                        )}
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              color: 'rgba(255, 255, 255, 0.7)',
+                              mb: 0.5
+                            }}
+                          >
+                            📍 {shop.location}
+                          </Typography>
+                          {shop.type && (
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                fontStyle: 'italic'
+                              }}
+                            >
+                              🏷️ {shop.type}
+                            </Typography>
+                          )}
+                        </Box>
                       </Box>
+                      
+                      <Button
+                        variant="contained"
+                        size="medium"
+                        disabled={selectingShop !== null}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShopSelect(shop);
+                        }}
+                        sx={{
+                          background: selectingShop === shop._id 
+                            ? alpha(colors.cashier.main, 0.3)
+                            : isPrimary
+                            ? colors.cashier.gradient
+                            : colors.primary.gradient,
+                          borderRadius: 2,
+                          px: 3,
+                          fontWeight: 'bold',
+                          minWidth: 120,
+                          '&:hover': selectingShop ? {} : {
+                            background: colors.cashier.dark,
+                            transform: 'translateY(-1px)',
+                            boxShadow: `0 6px 20px ${alpha(colors.cashier.main, 0.4)}`
+                          },
+                          '&:disabled': {
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            color: 'rgba(255, 255, 255, 0.3)'
+                          }
+                        }}
+                        startIcon={
+                          selectingShop === shop._id ? (
+                            <CircularProgress size={16} color="inherit" />
+                          ) : (
+                            <PointOfSale />
+                          )
+                        }
+                      >
+                        {selectingShop === shop._id ? 'Selecting...' : 'Start POS'}
+                      </Button>
                     </Box>
                     
-                    <Button
-                      variant="contained"
-                      size="medium"
-                      disabled={selectingShop !== null}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleShopSelect(shop);
-                      }}
-                      sx={{
-                        background: selectingShop === shop._id 
-                          ? alpha(colors.cashier.main, 0.3)
-                          : colors.cashier.gradient,
-                        borderRadius: 2,
-                        px: 3,
-                        fontWeight: 'bold',
-                        minWidth: 120,
-                        '&:hover': selectingShop ? {} : {
-                          background: colors.cashier.dark,
-                          transform: 'translateY(-1px)',
-                          boxShadow: `0 6px 20px ${alpha(colors.cashier.main, 0.4)}`
-                        },
-                        '&:disabled': {
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          color: 'rgba(255, 255, 255, 0.3)'
-                        }
-                      }}
-                      startIcon={
-                        selectingShop === shop._id ? (
-                          <CircularProgress size={16} color="inherit" />
-                        ) : (
-                          <PointOfSale />
-                        )
-                      }
-                    >
-                      {selectingShop === shop._id ? 'Selecting...' : 'Start POS'}
-                    </Button>
-                  </Box>
-                  
-                  {/* Selection Progress Indicator */}
-                  {selectingShop === shop._id && (
-                    <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CircularProgress size={16} color="inherit" />
-                      <Typography variant="caption" sx={{ color: colors.cashier.light }}>
-                        Preparing your POS session...
-                      </Typography>
-                    </Box>
-                  )}
-                </Paper>
-              ))}
+                    {selectingShop === shop._id && (
+                      <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={16} color="inherit" />
+                        <Typography variant="caption" sx={{ color: colors.cashier.light }}>
+                          Preparing your POS session...
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                );
+              })}
             </Box>
           )}
         </Box>
 
         <Divider sx={{ borderColor: alpha('#fff', 0.1) }} />
 
-        {/* Footer Section */}
         <Box sx={{ 
           padding: 3, 
           textAlign: 'center',
@@ -601,7 +648,7 @@ const ShopSelection = () => {
               }
             }}
           >
-            Refresh Shops
+            Refresh
           </Button>
           
           <Button

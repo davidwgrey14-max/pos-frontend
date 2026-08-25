@@ -1,3 +1,4 @@
+// src/pages/Admin/CashierManagement.js
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   Table, 
@@ -24,7 +25,10 @@ import {
   Badge,
   Divider,
   List,
-  Avatar
+  Avatar,
+  Switch,
+  Transfer,
+  Checkbox
 } from 'antd';
 import { 
   UserAddOutlined, 
@@ -41,10 +45,13 @@ import {
   CalendarOutlined,
   ReloadOutlined,
   FilterOutlined,
-  CreditCardOutlined
+  CreditCardOutlined,
+  ShopOutlined,
+  SwapOutlined,
+  LockOutlined,
+  UnlockOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
-import CashierDailyPerformance from '../../components/CashierDailyPerformance';
 import { transactionAPI, creditAPI, unifiedAPI } from '../../services/api';
 import { CalculationUtils } from '../../utils/calculationUtils';
 import dayjs from 'dayjs';
@@ -54,24 +61,43 @@ const { TabPane } = Tabs;
 const { confirm } = Modal;
 const { Option } = Select;
 
-// Enhanced Cashier Analytics Component with Credit Support
+// ==================== CASHIER ANALYTICS COMPONENT ====================
 const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
   const [dateRange, setDateRange] = useState([
     dayjs().subtract(7, 'days'),
     dayjs()
   ]);
   const [timeRange, setTimeRange] = useState('7d');
+  const [selectedShopFilter, setSelectedShopFilter] = useState('all');
 
-  // Calculate cashier performance metrics with credit support
+  // Get assigned shops for filtering
+  const assignedShops = useMemo(() => {
+    if (!cashier) return [];
+    return cashier.assignedShops || [];
+  }, [cashier]);
+
+  // Calculate cashier performance metrics with credit support and shop filtering
   const cashierStats = useMemo(() => {
     if (!cashier || !transactions || !Array.isArray(transactions)) {
       return getDefaultCashierStats();
     }
 
     // Filter transactions for this cashier
-    const cashierTransactions = transactions.filter(t => 
-      t.cashierName === cashier.name || t.cashierId === cashier._id
+    let cashierTransactions = transactions.filter(t => 
+      t.cashierName === cashier.name || 
+      t.cashierId === cashier._id ||
+      t.cashierId?._id === cashier._id
     );
+
+    // Apply shop filter if selected
+    if (selectedShopFilter !== 'all') {
+      cashierTransactions = cashierTransactions.filter(t => 
+        t.shop === selectedShopFilter || 
+        t.shopId === selectedShopFilter ||
+        t.shop?._id === selectedShopFilter ||
+        t.shopId?._id === selectedShopFilter
+      );
+    }
 
     // Filter by date range
     const filteredTransactions = cashierTransactions.filter(t => {
@@ -81,7 +107,8 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       const startDate = dateRange[0];
       const endDate = dateRange[1];
       
-      return transactionDate.isAfter(startDate.subtract(1, 'day')) && transactionDate.isBefore(endDate.add(1, 'day'));
+      return transactionDate.isAfter(startDate.subtract(1, 'day')) && 
+             transactionDate.isBefore(endDate.add(1, 'day'));
     });
 
     if (filteredTransactions.length === 0) {
@@ -99,10 +126,12 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
 
     // Credit-specific calculations
     const cashierCredits = credits?.filter(credit => 
-      credit.cashierId === cashier._id || credit.cashierName === cashier.name
+      credit.cashierId === cashier._id || 
+      credit.cashierName === cashier.name ||
+      credit.cashierId?._id === cashier._id
     ) || [];
     
-    const creditSales = filteredTransactions.filter(t => t.paymentMethod === 'credit');
+    const creditSales = filteredTransactions.filter(t => t.paymentMethod === 'credit' || t.isCreditTransaction);
     const totalCreditAmount = creditSales.reduce((sum, t) => sum + (t.totalAmount || 0), 0);
     const outstandingCredit = cashierCredits
       .filter(credit => credit.status !== 'paid')
@@ -120,7 +149,8 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
           profit: 0,
           itemsSold: 0,
           creditSales: 0,
-          creditAmount: 0
+          creditAmount: 0,
+          shopName: t.shopName || 'Unknown'
         };
       }
       dailyPerformance[date].revenue += t.totalAmount || 0;
@@ -128,7 +158,7 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       dailyPerformance[date].profit += t.profit || 0;
       dailyPerformance[date].itemsSold += t.itemsCount || 0;
       
-      if (t.paymentMethod === 'credit') {
+      if (t.paymentMethod === 'credit' || t.isCreditTransaction) {
         dailyPerformance[date].creditSales += 1;
         dailyPerformance[date].creditAmount += t.totalAmount || 0;
       }
@@ -176,9 +206,11 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       period: {
         start: dateRange[0]?.format('YYYY-MM-DD'),
         end: dateRange[1]?.format('YYYY-MM-DD')
-      }
+      },
+      shopFilter: selectedShopFilter,
+      shopCount: assignedShops.length
     };
-  }, [cashier, transactions, credits, dateRange]);
+  }, [cashier, transactions, credits, dateRange, selectedShopFilter, assignedShops]);
 
   const getProfitColor = (profit) => {
     return profit >= 0 ? '#3f8600' : '#cf1322';
@@ -217,6 +249,10 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
     setDateRange([startDate, now]);
   };
 
+  const handleShopFilterChange = (value) => {
+    setSelectedShopFilter(value);
+  };
+
   if (!cashier) {
     return (
       <Card>
@@ -243,13 +279,34 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
                     {cashier.status?.toUpperCase()}
                   </Tag>
                   {cashier.club && <Tag color="blue">{cashier.club}</Tag>}
+                  {cashier.assignedShops && cashier.assignedShops.length > 1 && (
+                    <Tag color="purple">Multi-Shop Access</Tag>
+                  )}
                 </div>
               </div>
             </Space>
           </Col>
           <Col span={12}>
-            <Space style={{ float: 'right' }}>
-              <Text strong>Time Range:</Text>
+            <Space style={{ float: 'right' }} wrap>
+              {/* Shop Filter - Only show if cashier has multiple shops */}
+              {assignedShops.length > 1 && (
+                <>
+                  <Text strong>Shop:</Text>
+                  <Select 
+                    value={selectedShopFilter}
+                    onChange={handleShopFilterChange}
+                    style={{ width: 150 }}
+                  >
+                    <Option value="all">All Assigned Shops</Option>
+                    {assignedShops.map(shop => (
+                      <Option key={shop.shopId || shop._id} value={shop.shopId || shop._id}>
+                        {shop.name || shop.shopName}
+                      </Option>
+                    ))}
+                  </Select>
+                </>
+              )}
+              <Text strong>Time:</Text>
               <Select 
                 value={timeRange} 
                 onChange={handleTimeRangeChange}
@@ -270,6 +327,16 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
             </Space>
           </Col>
         </Row>
+        {selectedShopFilter !== 'all' && (
+          <div style={{ marginTop: 8 }}>
+            <Tag color="blue">
+              Filtering by: {assignedShops.find(s => (s.shopId || s._id) === selectedShopFilter)?.name || 'Selected Shop'}
+            </Tag>
+            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+              Showing data for selected shop only
+            </Text>
+          </div>
+        )}
       </Card>
 
       {/* Key Metrics */}
@@ -437,6 +504,9 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
                       {day.creditSales > 0 && (
                         <Tag color="orange">{day.creditSales} credit</Tag>
                       )}
+                      {day.shopName && day.shopName !== 'Unknown' && (
+                        <Tag color="green">{day.shopName}</Tag>
+                      )}
                     </Space>
                   }
                   description={
@@ -492,23 +562,29 @@ const getDefaultCashierStats = () => ({
   topProducts: []
 });
 
-// Enhanced Cashier Management Component with Credit Support
+// ==================== MAIN CASHIER MANAGEMENT COMPONENT ====================
 const CashierManagement = () => {
   const [cashiers, setCashiers] = useState([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
+  const [isShopAssignmentVisible, setIsShopAssignmentVisible] = useState(false);
   const [editingCashier, setEditingCashier] = useState(null);
+  const [selectedCashierForAssignment, setSelectedCashierForAssignment] = useState(null);
   const [connectionError, setConnectionError] = useState(false);
   const [loading, setLoading] = useState({
     table: false,
     form: false,
     action: false,
-    analytics: false
+    analytics: false,
+    assignment: false
   });
   const [activeTab, setActiveTab] = useState('cashiers');
   const [selectedCashier, setSelectedCashier] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [credits, setCredits] = useState([]);
+  const [availableShops, setAvailableShops] = useState([]);
+  const [assignedShopIds, setAssignedShopIds] = useState([]);
+  const [shopAssignmentError, setShopAssignmentError] = useState(null);
   const [currentUser] = useState({
     _id: 'admin',
     role: 'admin',
@@ -545,7 +621,7 @@ const CashierManagement = () => {
     return instance;
   };
 
-  // FIXED: Enhanced fetchCashiers function with better error handling
+  // Fetch cashiers with enhanced data
   const fetchCashiers = useCallback(async (forceRefresh = false) => {
     try {
       const cacheValid = cashiersCache.current.lastFetch && 
@@ -562,7 +638,6 @@ const CashierManagement = () => {
       const api = createApiInstance();
       const response = await api.get('/api/cashiers');
       
-      // Handle different response formats
       let cashiersData = [];
       if (response.data && Array.isArray(response.data.data)) {
         cashiersData = response.data.data;
@@ -572,13 +647,23 @@ const CashierManagement = () => {
         cashiersData = response.data;
       }
       
+      // Process cashiers to include assigned shops info
+      const enhancedCashiers = cashiersData.map(cashier => ({
+        ...cashier,
+        assignedShops: cashier.assignedShops || [],
+        activeAssignedShops: (cashier.assignedShops || [])
+          .filter(a => a.isActive !== false),
+        hasMultipleShops: (cashier.assignedShops || [])
+          .filter(a => a.isActive !== false).length > 1
+      }));
+      
       cashiersCache.current = {
-        data: cashiersData,
+        data: enhancedCashiers,
         lastFetch: Date.now()
       };
       
-      setCashiers(cashiersData);
-      console.log(`✅ Fetched ${cashiersData.length} cashiers`);
+      setCashiers(enhancedCashiers);
+      console.log(`✅ Fetched ${enhancedCashiers.length} cashiers with shop assignments`);
     } catch (error) {
       console.error('❌ Fetch cashiers error:', error);
       
@@ -593,113 +678,103 @@ const CashierManagement = () => {
     }
   }, []);
 
-  // FIXED: Enhanced fetchTransactions with proper API calls
-const fetchTransactions = useCallback(async (cashierId = null) => {
-  try {
-    setLoading(prev => ({ ...prev, analytics: true }));
-    console.log('🔄 Fetching transactions for analytics...', { cashierId });
-    
-    const params = {};
-    
-    // Add cashier filter if specific cashier is selected
-    if (cashierId) {
-      params.cashierId = cashierId;
-    }
-    
-    let transactionsData;
-    
-    // Try unified API first
+  // Fetch transactions for analytics
+  const fetchTransactions = useCallback(async (cashierId = null) => {
     try {
-      transactionsData = await unifiedAPI.getCombinedTransactions(params);
-    } catch (unifiedError) {
-      console.warn('Unified API failed, trying transactionAPI directly...', unifiedError);
-      // Fallback to transactionAPI
-      const rawTransactions = await transactionAPI.getAll(params);
-      transactionsData = {
-        transactions: rawTransactions,
-        salesWithProfit: rawTransactions
-      };
-    }
-    
-    console.log('✅ Transactions data structure:', {
-      hasTransactions: !!transactionsData.transactions,
-      transactionCount: transactionsData.transactions?.length || 0,
-      hasSalesWithProfit: !!transactionsData.salesWithProfit,
-      salesWithProfitCount: transactionsData.salesWithProfit?.length || 0
-    });
+      setLoading(prev => ({ ...prev, analytics: true }));
+      console.log('🔄 Fetching transactions for analytics...', { cashierId });
+      
+      const params = {};
+      if (cashierId) {
+        params.cashierId = cashierId;
+      }
+      
+      let transactionsData;
+      
+      try {
+        transactionsData = await unifiedAPI.getCombinedTransactions(params);
+      } catch (unifiedError) {
+        console.warn('Unified API failed, trying transactionAPI directly...', unifiedError);
+        const rawTransactions = await transactionAPI.getAll(params);
+        transactionsData = {
+          transactions: rawTransactions,
+          salesWithProfit: rawTransactions
+        };
+      }
+      
+      console.log('✅ Transactions data structure:', {
+        hasTransactions: !!transactionsData.transactions,
+        transactionCount: transactionsData.transactions?.length || 0,
+        hasSalesWithProfit: !!transactionsData.salesWithProfit,
+        salesWithProfitCount: transactionsData.salesWithProfit?.length || 0
+      });
 
-    // Use salesWithProfit if available, otherwise fallback to transactions
-    const salesData = transactionsData.salesWithProfit || transactionsData.transactions || [];
-    
-    // Process the data
-    const processedData = CalculationUtils.processComprehensiveData({
-      transactions: salesData,
-      expenses: [],
-      credits: [],
-      products: [],
-      shops: [],
-      cashiers: []
-    }, null);
-    
-    setTransactions(processedData.salesWithProfit || []);
-    
-    console.log(`✅ Loaded ${processedData.salesWithProfit?.length || 0} transactions for analytics`);
-    
-  } catch (error) {
-    console.error('❌ Error fetching transactions for analytics:', error);
-    message.error('Failed to load transaction data for analytics');
-    setTransactions([]);
-  } finally {
-    setLoading(prev => ({ ...prev, analytics: false }));
-  }
-}, []);
-  // FIXED: Enhanced fetchCredits with proper API calls
-const fetchCredits = useCallback(async (cashierId = null) => {
-  try {
-    console.log('🔄 Fetching credits data...', { cashierId });
-    
-    const params = {};
-    
-    // Add cashier filter if specific cashier is selected
-    if (cashierId) {
-      params.cashierId = cashierId;
+      const salesData = transactionsData.salesWithProfit || transactionsData.transactions || [];
+      
+      const processedData = CalculationUtils.processComprehensiveData({
+        transactions: salesData,
+        expenses: [],
+        credits: [],
+        products: [],
+        shops: [],
+        cashiers: []
+      }, null);
+      
+      setTransactions(processedData.salesWithProfit || []);
+      
+      console.log(`✅ Loaded ${processedData.salesWithProfit?.length || 0} transactions for analytics`);
+      
+    } catch (error) {
+      console.error('❌ Error fetching transactions for analytics:', error);
+      message.error('Failed to load transaction data for analytics');
+      setTransactions([]);
+    } finally {
+      setLoading(prev => ({ ...prev, analytics: false }));
     }
-    
-    // Use creditAPI directly (correct method exists)
-    const creditsData = await creditAPI.getAll(params);
-    
-    // Handle different response formats
-    let creditsArray = [];
-    
-    if (creditsData && Array.isArray(creditsData.credits)) {
-      creditsArray = creditsData.credits;
-    } else if (creditsData && Array.isArray(creditsData.creditTransactions)) {
-      creditsArray = creditsData.creditTransactions;
-    } else if (creditsData && Array.isArray(creditsData.data)) {
-      creditsArray = creditsData.data;
-    } else if (Array.isArray(creditsData)) {
-      creditsArray = creditsData;
+  }, []);
+
+  // Fetch credits for analytics
+  const fetchCredits = useCallback(async (cashierId = null) => {
+    try {
+      console.log('🔄 Fetching credits data...', { cashierId });
+      
+      const params = {};
+      if (cashierId) {
+        params.cashierId = cashierId;
+      }
+      
+      const creditsData = await creditAPI.getAll(params);
+      
+      let creditsArray = [];
+      
+      if (creditsData && Array.isArray(creditsData.credits)) {
+        creditsArray = creditsData.credits;
+      } else if (creditsData && Array.isArray(creditsData.creditTransactions)) {
+        creditsArray = creditsData.creditTransactions;
+      } else if (creditsData && Array.isArray(creditsData.data)) {
+        creditsArray = creditsData.data;
+      } else if (Array.isArray(creditsData)) {
+        creditsArray = creditsData;
+      }
+      
+      console.log('✅ Credits received:', creditsArray.length);
+      setCredits(creditsArray);
+    } catch (error) {
+      console.error('❌ Error fetching credits data:', error);
+      message.warning('Failed to load credit data for analytics');
+      setCredits([]);
     }
-    
-    console.log('✅ Credits received:', creditsArray.length);
-    setCredits(creditsArray);
-  } catch (error) {
-    console.error('❌ Error fetching credits data:', error);
-    message.warning('Failed to load credit data for analytics');
-    setCredits([]);
-  }
-}, []);
+  }, []);
 
   useEffect(() => {
     fetchCashiers();
   }, [fetchCashiers]);
 
-  // FIXED: Enhanced analytics data fetching with proper cashier filtering
+  // Fetch analytics data when cashier is selected
   useEffect(() => {
     if (activeTab === 'performance' && selectedCashier) {
       console.log('📊 Loading analytics data for cashier:', selectedCashier.name, selectedCashier._id);
       
-      // Fetch data specifically for the selected cashier
       const cashierId = selectedCashier._id;
       
       Promise.all([
@@ -756,19 +831,105 @@ const fetchCredits = useCallback(async (cashierId = null) => {
     setIsViewModalVisible(true);
   };
 
-  // FIXED: Enhanced analytics handler with proper data refresh
   const handleViewAnalytics = (cashier) => {
     setSelectedCashier(cashier);
     setActiveTab('performance');
     
-    // Fetch fresh data specifically for this cashier
     console.log('🔍 Viewing analytics for cashier:', cashier.name, cashier._id);
     
-    // Use setTimeout to ensure state is updated before fetching
     setTimeout(() => {
       fetchTransactions(cashier._id);
       fetchCredits(cashier._id);
     }, 100);
+  };
+
+  // ==================== SHOP ASSIGNMENT HANDLERS ====================
+  
+  const handleOpenShopAssignment = async (cashier) => {
+    setSelectedCashierForAssignment(cashier);
+    setShopAssignmentError(null);
+    setLoading(prev => ({ ...prev, assignment: true }));
+    setIsShopAssignmentVisible(true);
+    
+    try {
+      const api = createApiInstance();
+      const response = await api.get(`/api/cashiers/${cashier._id}/available-shops`);
+      
+      if (response.data.success) {
+        const shops = response.data.data.shops || [];
+        setAvailableShops(shops);
+        
+        const assignedIds = shops
+          .filter(shop => shop.isAssigned)
+          .map(shop => shop._id);
+        setAssignedShopIds(assignedIds);
+      } else {
+        message.error(response.data.message || 'Failed to load shops');
+        setShopAssignmentError('Failed to load shop data');
+      }
+    } catch (error) {
+      console.error('Error loading shops for assignment:', error);
+      setShopAssignmentError('Failed to load shops. Please try again.');
+      message.error('Failed to load shop assignment data');
+    } finally {
+      setLoading(prev => ({ ...prev, assignment: false }));
+    }
+  };
+
+  const handleSaveShopAssignment = async () => {
+    if (!selectedCashierForAssignment) return;
+    
+    setLoading(prev => ({ ...prev, assignment: true }));
+    setShopAssignmentError(null);
+    
+    try {
+      const api = createApiInstance();
+      
+      const currentAssigned = availableShops
+        .filter(shop => shop.isAssigned)
+        .map(shop => shop._id);
+      
+      const shopsToAssign = assignedShopIds.filter(id => !currentAssigned.includes(id));
+      const shopsToRemove = currentAssigned.filter(id => !assignedShopIds.includes(id));
+      
+      // Assign new shops
+      if (shopsToAssign.length > 0) {
+        await api.post(`/api/cashiers/${selectedCashierForAssignment._id}/assign-shops`, {
+          shopIds: shopsToAssign,
+          action: 'assign',
+          notes: 'Assigned by admin'
+        });
+      }
+      
+      // Remove shops
+      if (shopsToRemove.length > 0) {
+        await api.post(`/api/cashiers/${selectedCashierForAssignment._id}/assign-shops`, {
+          shopIds: shopsToRemove,
+          action: 'remove',
+          notes: 'Removed by admin'
+        });
+      }
+      
+      message.success('Shop assignments updated successfully');
+      setIsShopAssignmentVisible(false);
+      fetchCashiers(true);
+      
+    } catch (error) {
+      console.error('Error updating shop assignments:', error);
+      const errorMsg = error.response?.data?.message || 'Failed to update shop assignments';
+      setShopAssignmentError(errorMsg);
+      message.error(errorMsg);
+    } finally {
+      setLoading(prev => ({ ...prev, assignment: false }));
+    }
+  };
+
+  const handleToggleShopAssignment = (shopId, checked) => {
+    if (checked) {
+      setAssignedShopIds([...assignedShopIds, shopId]);
+    } else {
+      setAssignedShopIds(assignedShopIds.filter(id => id !== shopId));
+    }
   };
 
   const handleSubmit = async (values) => {
@@ -849,7 +1010,7 @@ const fetchCredits = useCallback(async (cashierId = null) => {
     }
   };
 
-  // Enhanced columns with analytics action
+  // Enhanced columns with shop assignment and analytics
   const columns = [
     { 
       title: 'Name', 
@@ -888,6 +1049,36 @@ const fetchCredits = useCallback(async (cashierId = null) => {
       )
     },
     { 
+      title: 'Assigned Shops', 
+      key: 'assignedShops',
+      render: (_, record) => {
+        const activeShops = (record.assignedShops || [])
+          .filter(a => a.isActive !== false);
+        
+        if (activeShops.length === 0) {
+          return <Tag color="default">No shops assigned</Tag>;
+        }
+        
+        return (
+          <Space direction="vertical" size={2}>
+            {activeShops.slice(0, 3).map((shop, index) => (
+              <Tag key={index} color="blue" style={{ margin: 0 }}>
+                {shop.shopName || 'Unknown Shop'}
+              </Tag>
+            ))}
+            {activeShops.length > 3 && (
+              <Tag color="default">+{activeShops.length - 3} more</Tag>
+            )}
+            {record.shopId && (
+              <Tag color="green" size="small" style={{ marginTop: 4 }}>
+                Primary: {record.shopName}
+              </Tag>
+            )}
+          </Space>
+        );
+      }
+    },
+    { 
       title: 'Last Login', 
       dataIndex: 'lastLogin', 
       key: 'lastLogin',
@@ -897,9 +1088,9 @@ const fetchCredits = useCallback(async (cashierId = null) => {
     { 
       title: 'Actions', 
       key: 'actions',
-      width: 300,
+      width: 380,
       render: (_, record) => (
-        <Space size="small">
+        <Space size="small" wrap>
           <Tooltip title="View Analytics">
             <Button 
               type="primary" 
@@ -909,6 +1100,18 @@ const fetchCredits = useCallback(async (cashierId = null) => {
               disabled={loading.action || connectionError}
             >
               Analytics
+            </Button>
+          </Tooltip>
+          <Tooltip title="Manage Shop Access">
+            <Button 
+              type="default" 
+              size="small"
+              icon={<ShopOutlined />}
+              onClick={() => handleOpenShopAssignment(record)}
+              disabled={loading.action || connectionError}
+              style={{ color: '#1890ff', borderColor: '#1890ff' }}
+            >
+              Shops
             </Button>
           </Tooltip>
           <Button 
@@ -946,17 +1149,26 @@ const fetchCredits = useCallback(async (cashierId = null) => {
 
   return (
     <div className="management-content">
-      <div className="table-header">
+      <div className="table-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={2}>Cashier Management</Title>
-        <Button 
-          type="primary" 
-          icon={<UserAddOutlined />} 
-          onClick={handleAddCashier}
-          loading={loading.table}
-          disabled={connectionError}
-        >
-          Add Cashier
-        </Button>
+        <Space>
+          <Button 
+            icon={<ReloadOutlined />}
+            onClick={() => fetchCashiers(true)}
+            loading={loading.table}
+          >
+            Refresh
+          </Button>
+          <Button 
+            type="primary" 
+            icon={<UserAddOutlined />} 
+            onClick={handleAddCashier}
+            loading={loading.table}
+            disabled={connectionError}
+          >
+            Add Cashier
+          </Button>
+        </Space>
       </div>
       
       {connectionError && (
@@ -992,18 +1204,7 @@ const fetchCredits = useCallback(async (cashierId = null) => {
           } 
           key="cashiers"
         >
-          <Card 
-            title="Current Cashiers"
-            extra={
-              <Button 
-                icon={<ReloadOutlined />}
-                onClick={() => fetchCashiers(true)}
-                loading={loading.table}
-              >
-                Refresh
-              </Button>
-            }
-          >
+          <Card>
             <Table 
               columns={columns} 
               dataSource={cashiers} 
@@ -1183,9 +1384,9 @@ const fetchCredits = useCallback(async (cashierId = null) => {
               
               <Row gutter={16} style={{ marginTop: 8 }}>
                 <Col span={12}>
-                  <Text strong>Club:</Text>
+                  <Text strong>Primary Shop:</Text>
                   <br />
-                  <Text>{editingCashier.club || 'Not assigned'}</Text>
+                  <Text>{editingCashier.shopName || 'Not assigned'}</Text>
                 </Col>
                 <Col span={12}>
                   <Text strong>Role:</Text>
@@ -1193,6 +1394,25 @@ const fetchCredits = useCallback(async (cashierId = null) => {
                   <Tag color="blue">{editingCashier.role?.toUpperCase()}</Tag>
                 </Col>
               </Row>
+
+              <div style={{ marginTop: 8 }}>
+                <Text strong>Assigned Shops:</Text>
+                <br />
+                {(editingCashier.assignedShops || []).filter(a => a.isActive !== false).length > 0 ? (
+                  <Space direction="vertical" size={2} style={{ marginTop: 4 }}>
+                    {(editingCashier.assignedShops || [])
+                      .filter(a => a.isActive !== false)
+                      .map((shop, index) => (
+                        <Tag key={index} color="blue">
+                          {shop.shopName || 'Unknown Shop'}
+                          {editingCashier.shopId === shop.shopId && ' (Primary)'}
+                        </Tag>
+                      ))}
+                  </Space>
+                ) : (
+                  <Text type="secondary">No shops assigned</Text>
+                )}
+              </div>
               
               {editingCashier.lastLogin && (
                 <div style={{ marginTop: 8 }}>
@@ -1211,8 +1431,186 @@ const fetchCredits = useCallback(async (cashierId = null) => {
           </div>
         )}
       </Modal>
+
+      {/* Shop Assignment Modal */}
+      <Modal
+        title={
+          <Space>
+            <ShopOutlined />
+            Manage Shop Access
+            {selectedCashierForAssignment && (
+              <Tag color="blue" style={{ marginLeft: 8 }}>
+                {selectedCashierForAssignment.name}
+              </Tag>
+            )}
+          </Space>
+        }
+        open={isShopAssignmentVisible}
+        onCancel={() => {
+          setIsShopAssignmentVisible(false);
+          setShopAssignmentError(null);
+        }}
+        footer={[
+          <Button key="cancel" onClick={() => {
+            setIsShopAssignmentVisible(false);
+            setShopAssignmentError(null);
+          }}>
+            Cancel
+          </Button>,
+          <Button 
+            key="save" 
+            type="primary" 
+            loading={loading.assignment}
+            onClick={handleSaveShopAssignment}
+            icon={<SaveOutlined />}
+          >
+            Save Changes
+          </Button>
+        ]}
+        width={700}
+      >
+        {shopAssignmentError && (
+          <Alert
+            message="Error"
+            description={shopAssignmentError}
+            type="error"
+            showIcon
+            closable
+            style={{ marginBottom: 16 }}
+            onClose={() => setShopAssignmentError(null)}
+          />
+        )}
+        
+        <div style={{ marginBottom: 16 }}>
+          <Space>
+            <Text strong>Cashier:</Text>
+            <Text>{selectedCashierForAssignment?.name}</Text>
+            <Text type="secondary">({selectedCashierForAssignment?.email})</Text>
+          </Space>
+          <br />
+          <Text type="secondary">
+            Select the shops this cashier should have access to. 
+            Toggle the switch to assign or remove shop access.
+          </Text>
+        </div>
+        
+        <Divider />
+        
+        <Spin spinning={loading.assignment}>
+          {availableShops.length > 0 ? (
+            <div>
+              <Alert
+                message="Shop Assignment"
+                description={
+                  <span>
+                    Cashier has access to <strong>{assignedShopIds.length}</strong> of {availableShops.length} shops.
+                    {assignedShopIds.length === 0 && ' Currently, this cashier has no shop access.'}
+                  </span>
+                }
+                type={assignedShopIds.length > 0 ? 'info' : 'warning'}
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+              
+              <List
+                dataSource={availableShops}
+                renderItem={shop => {
+                  const isChecked = assignedShopIds.includes(shop._id);
+                  const isPrimary = shop.isPrimary;
+                  
+                  return (
+                    <List.Item
+                      actions={[
+                        isPrimary && (
+                          <Tag color="green" icon={<StarOutlined />}>
+                            Primary
+                          </Tag>
+                        ),
+                        <Switch
+                          checked={isChecked}
+                          onChange={(checked) => handleToggleShopAssignment(shop._id, checked)}
+                          checkedChildren="Assigned"
+                          unCheckedChildren="Remove"
+                          disabled={loading.assignment}
+                        />
+                      ]}
+                      style={{
+                        backgroundColor: isChecked ? alpha('#10B981', 0.05) : 'transparent',
+                        borderRadius: 4,
+                        padding: '8px 12px'
+                      }}
+                    >
+                      <List.Item.Meta
+                        avatar={
+                          <Avatar 
+                            style={{ 
+                              backgroundColor: isChecked ? '#10B981' : '#d9d9d9',
+                              color: 'white'
+                            }}
+                          >
+                            {shop.name.charAt(0).toUpperCase()}
+                          </Avatar>
+                        }
+                        title={
+                          <Space>
+                            <Text strong>{shop.name}</Text>
+                            <Tag color={shop.status === 'active' ? 'green' : 'red'}>
+                              {shop.status?.toUpperCase()}
+                            </Tag>
+                            {isPrimary && (
+                              <Tag color="gold">Primary</Tag>
+                            )}
+                          </Space>
+                        }
+                        description={
+                          <div>
+                            <div>📍 {shop.location || 'No location specified'}</div>
+                            <div>🏷️ {shop.type || 'Retail'}</div>
+                            {isChecked && (
+                              <Text type="success" style={{ fontSize: 12 }}>
+                                ✓ Access granted
+                              </Text>
+                            )}
+                          </div>
+                        }
+                      />
+                    </List.Item>
+                  );
+                }}
+              />
+            </div>
+          ) : (
+            <Empty 
+              description="No active shops available to assign" 
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            >
+              <Button 
+                type="primary" 
+                onClick={() => {
+                  setAvailableShops([]);
+                  setShopAssignmentError('No shops available. Please create a shop first.');
+                }}
+              >
+                Create Shop
+              </Button>
+            </Empty>
+          )}
+        </Spin>
+      </Modal>
     </div>
   );
+};
+
+// Import missing icons
+import { SaveOutlined, StarOutlined } from '@ant-design/icons';
+
+// Add alpha utility for styling
+const alpha = (color, opacity) => {
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 };
 
 export default CashierManagement;
