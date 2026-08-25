@@ -513,46 +513,47 @@ const CashierManagement = () => {
     lastFetch: null
   });
 
-  // Create API instance with better error handling
-  const createApiInstance = () => {
-    const instance = axios.create({
-      baseURL: process.env.REACT_APP_API_URL || 'https://back-pos.vercel.app',
-      timeout: 15000,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
-
-    // Add auth token if available
-    const token = localStorage.getItem('sessionToken') || 
-                  localStorage.getItem('authToken') ||
-                  localStorage.getItem('adminToken');
-    if (token) {
-      instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  // In CashierManagement.js, update the createApiInstance function
+const createApiInstance = () => {
+  const instance = axios.create({
+    baseURL: process.env.REACT_APP_API_URL || 'https://back-pos.vercel.app',
+    timeout: 15000,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
     }
+  });
 
-    instance.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-          setConnectionError(true);
-          setErrorDetails('Network error - cannot reach server');
-          message.error('Cannot connect to server. Please check if the backend is running.');
-        } else if (error.response?.status === 401) {
-          message.error('Session expired. Please login again.');
-          // Redirect to login
-          window.location.href = '/login';
-        } else if (error.response?.status === 500) {
-          setErrorDetails(error.response?.data?.message || 'Internal server error');
-          message.error('Server error. Please try again later.');
-        }
-        return Promise.reject(error);
+  // Add auth token if available
+  const token = localStorage.getItem('sessionToken') || 
+                localStorage.getItem('authToken') ||
+                localStorage.getItem('adminToken');
+  if (token) {
+    instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  }
+
+  // Add response interceptor for better error handling
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        setConnectionError(true);
+        setErrorDetails('Network error - cannot reach server');
+        message.error('Cannot connect to server. Please check if the backend is running.');
+      } else if (error.response?.status === 401) {
+        message.error('Session expired. Please login again.');
+        window.location.href = '/login';
+      } else if (error.response?.status === 500) {
+        const errorMsg = error.response?.data?.message || 'Internal server error';
+        setErrorDetails(errorMsg);
+        message.error('Server error: ' + errorMsg);
       }
-    );
+      return Promise.reject(error);
+    }
+  );
 
-    return instance;
-  };
+  return instance;
+};
 
   // Fetch cashiers with fallback
   const fetchCashiers = useCallback(async (forceRefresh = false) => {
