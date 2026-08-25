@@ -1,9 +1,9 @@
-// src/pages/Admin/AdminDashboard.jsx - Enhanced with Complete Financial Overview
+// src/pages/Admin/AdminDashboard.jsx - REMOVED ALL VERIFICATION CODE
 import React, { useState, useEffect } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
   Button, Modal, Space, Tooltip, message, Badge, Avatar,
-  Dropdown, Input, Select, DatePicker, Switch, Divider, Progress
+  Dropdown, Input, Select, DatePicker, Switch, Divider
 } from 'antd';
 import {
   DashboardOutlined,
@@ -24,30 +24,17 @@ import {
   CreditCardOutlined,
   SearchOutlined,
   FilterOutlined,
-  SafetyOutlined,
   TeamOutlined,
-  SettingOutlined,
-  FileTextOutlined,
-  PlusOutlined,
   RiseOutlined,
-  FallOutlined,
   StockOutlined,
   WalletOutlined,
   PercentageOutlined,
   CalculatorOutlined,
-  CheckCircleOutlined,
-  EyeOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  ClockCircleOutlined,
-  ExclamationCircleOutlined,
-  DownloadOutlined,
-  PrinterOutlined,
-  InfoCircleOutlined
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useSecurity } from '../../contexts/SecurityContext';
-import { unifiedAPI, shopAPI, authAPI } from '../../services/api';
+import { unifiedAPI, shopAPI } from '../../services/api';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -85,7 +72,6 @@ const AdminDashboard = () => {
       totalMpesaBank: 0,
       profitMargin: 0,
       totalItemsSold: 0,
-      // NEW METRICS
       costOfGoodsSold: 0,
       grossProfitMargin: 0,
       totalTransactions: 0,
@@ -104,8 +90,8 @@ const AdminDashboard = () => {
     recentTransactions: [],
     lowStockProducts: [],
     topProducts: [],
-    shopPerformance: [],
-    pendingVerifications: []
+    shopPerformance: []
+    // REMOVED: pendingVerifications
   });
 
   // Get current selected menu key based on path
@@ -119,11 +105,10 @@ const AdminDashboard = () => {
     if (path.includes('/admin/expenses')) return 'expenses';
     if (path.includes('/admin/inventory')) return 'inventory';
     if (path.includes('/admin/credits')) return 'credits';
-    if (path.includes('/admin/verify-device')) return 'verify-device';
     return 'dashboard';
   };
 
-  // User menu items
+  // User menu items - REMOVED devices and refresh
   const userMenuItems = [
     {
       key: 'profile',
@@ -131,25 +116,7 @@ const AdminDashboard = () => {
       label: 'Profile Settings'
     },
     {
-      key: 'devices',
-      icon: <SafetyOutlined />,
-      label: 'Manage Devices'
-    },
-    {
       type: 'divider'
-    },
-    {
-      key: 'refresh',
-      icon: <ReloadOutlined />,
-      label: 'Refresh Session',
-      onClick: async () => {
-        try {
-          await refreshSession();
-          message.success('Session refreshed successfully');
-        } catch (error) {
-          message.error('Failed to refresh session');
-        }
-      }
     },
     {
       key: 'logout',
@@ -176,7 +143,7 @@ const AdminDashboard = () => {
     // Only fetch dashboard data if on dashboard page
     if (location.pathname === '/admin/dashboard' || location.pathname === '/admin') {
       fetchDashboardData();
-      fetchPendingVerifications();
+      // REMOVED: fetchPendingVerifications();
     }
   }, [location.pathname]);
 
@@ -187,7 +154,7 @@ const AdminDashboard = () => {
       intervalId = setInterval(() => {
         console.log('🔄 Auto-refreshing dashboard data...');
         fetchDashboardData();
-        fetchPendingVerifications();
+        // REMOVED: fetchPendingVerifications();
       }, 30000);
     }
     return () => {
@@ -195,20 +162,7 @@ const AdminDashboard = () => {
     };
   }, [filters.autoRefresh, location.pathname]);
 
-  // Fetch pending verifications for admin
-  const fetchPendingVerifications = async () => {
-    try {
-      const response = await authAPI.getVerificationRequests();
-      if (response?.success) {
-        setDashboardData(prev => ({
-          ...prev,
-          pendingVerifications: response.data || []
-        }));
-      }
-    } catch (error) {
-      console.error('Error fetching pending verifications:', error);
-    }
-  };
+  // REMOVED: fetchPendingVerifications function entirely
 
   // Fetch dashboard data from backend
   const fetchDashboardData = async (customFilters = null) => {
@@ -260,10 +214,7 @@ const AdminDashboard = () => {
       // Process the data
       const processedData = processDashboardData(data, shopsData);
       
-      setDashboardData(prev => ({
-        ...processedData,
-        pendingVerifications: prev.pendingVerifications || []
-      }));
+      setDashboardData(processedData);
       setDataTimestamp(new Date().toISOString());
       
       console.log('✅ Dashboard data processed successfully');
@@ -424,7 +375,6 @@ const AdminDashboard = () => {
       totalMpesaBank: financialStats.totalMpesaBank || 0,
       profitMargin,
       totalItemsSold: financialStats.totalItemsSold || 0,
-      // NEW METRICS
       costOfGoodsSold,
       grossProfitMargin,
       totalTransactions,
@@ -476,7 +426,6 @@ const AdminDashboard = () => {
     setRefreshing(true);
     try {
       await fetchDashboardData();
-      await fetchPendingVerifications();
       message.success('Quick refresh completed');
     } catch (error) {
       message.error('Quick refresh failed');
@@ -537,9 +486,6 @@ const AdminDashboard = () => {
       case 'credits':
         navigate('/admin/credits');
         break;
-      case 'verify-device':
-        navigate('/admin/verify-device');
-        break;
       default:
         navigate('/admin/dashboard');
     }
@@ -597,50 +543,50 @@ const AdminDashboard = () => {
     { title: 'Min Level', dataIndex: 'minStockLevel', key: 'minStockLevel', render: (val) => val || 5 }
   ];
 
-  // Menu items for sidebar - Remove verify-device
-const menuItems = [
-  { 
-    key: 'dashboard', 
-    icon: <DashboardOutlined />, 
-    label: 'Dashboard' 
-  },
-  { 
-    key: 'products', 
-    icon: <ProductOutlined />, 
-    label: 'Products' 
-  },
-  { 
-    key: 'shops', 
-    icon: <ShopOutlined />, 
-    label: 'Shops' 
-  },
-  { 
-    key: 'cashiers', 
-    icon: <UserOutlined />, 
-    label: 'Cashiers' 
-  },
-  { 
-    key: 'transactions', 
-    icon: <BarChartOutlined />, 
-    label: 'Transactions' 
-  },
-  { 
-    key: 'expenses', 
-    icon: <DollarOutlined />, 
-    label: 'Expenses' 
-  },
-  { 
-    key: 'inventory', 
-    icon: <AppstoreOutlined />, 
-    label: 'Inventory' 
-  },
-  { 
-    key: 'credits', 
-    icon: <CreditCardOutlined />, 
-    label: 'Credits' 
-  }
-  // REMOVED: verify-device menu item
-];
+  // Menu items for sidebar - REMOVED verify-device
+  const menuItems = [
+    { 
+      key: 'dashboard', 
+      icon: <DashboardOutlined />, 
+      label: 'Dashboard' 
+    },
+    { 
+      key: 'products', 
+      icon: <ProductOutlined />, 
+      label: 'Products' 
+    },
+    { 
+      key: 'shops', 
+      icon: <ShopOutlined />, 
+      label: 'Shops' 
+    },
+    { 
+      key: 'cashiers', 
+      icon: <UserOutlined />, 
+      label: 'Cashiers' 
+    },
+    { 
+      key: 'transactions', 
+      icon: <BarChartOutlined />, 
+      label: 'Transactions' 
+    },
+    { 
+      key: 'expenses', 
+      icon: <DollarOutlined />, 
+      label: 'Expenses' 
+    },
+    { 
+      key: 'inventory', 
+      icon: <AppstoreOutlined />, 
+      label: 'Inventory' 
+    },
+    { 
+      key: 'credits', 
+      icon: <CreditCardOutlined />, 
+      label: 'Credits' 
+    }
+    // REMOVED: verify-device menu item
+  ];
 
   // Check if we're on a sub-page (not dashboard)
   const isSubPage = location.pathname !== '/admin/dashboard' && location.pathname !== '/admin';
@@ -924,19 +870,7 @@ const menuItems = [
                         </Text>
                       )}
                     </Col>
-                    <Col>
-                      {dashboardData.pendingVerifications?.length > 0 && (
-                        <Button 
-                          type="primary" 
-                          danger
-                          icon={<SafetyOutlined />}
-                          onClick={() => navigate('/admin/verify-device')}
-                          size="small"
-                        >
-                          {dashboardData.pendingVerifications.length} Pending Verifications
-                        </Button>
-                      )}
-                    </Col>
+                    {/* REMOVED: Pending Verifications button */}
                   </Row>
 
                   {/* ENHANCED FINANCIAL OVERVIEW */}
@@ -1159,7 +1093,7 @@ const menuItems = [
                     </Col>
                   </Row>
 
-                  {/* Alerts Section */}
+                  {/* Alerts Section - REMOVED verification alert */}
                   <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                     <Col span={24}>
                       {dashboardData.businessStats.lowStockCount > 0 && (
@@ -1190,21 +1124,7 @@ const menuItems = [
                           style={{ marginBottom: 8, borderRadius: '8px' }}
                         />
                       )}
-                      {dashboardData.pendingVerifications?.length > 0 && (
-                        <Alert
-                          message={`${dashboardData.pendingVerifications.length} device(s) pending verification`}
-                          description="New devices are waiting for your approval."
-                          type="error"
-                          showIcon
-                          icon={<SafetyOutlined />}
-                          action={
-                            <Button size="small" type="primary" onClick={() => navigate('/admin/verify-device')}>
-                              Review
-                            </Button>
-                          }
-                          style={{ borderRadius: '8px' }}
-                        />
-                      )}
+                      {/* REMOVED: Device verification alert */}
                     </Col>
                   </Row>
 
