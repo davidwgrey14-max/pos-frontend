@@ -26,9 +26,7 @@ import {
   Divider,
   List,
   Avatar,
-  Switch,
-  Transfer,
-  Checkbox
+  Switch
 } from 'antd';
 import { 
   UserAddOutlined, 
@@ -37,19 +35,17 @@ import {
   EyeOutlined,
   BarChartOutlined,
   TeamOutlined,
-  DollarOutlined,
-  ShoppingCartOutlined,
-  CalculatorOutlined,
+  ShopOutlined,
+  SaveOutlined,
+  StarOutlined,
+  SwapOutlined,
+  ReloadOutlined,
+  CreditCardOutlined,
   RiseOutlined,
   FallOutlined,
   CalendarOutlined,
-  ReloadOutlined,
-  FilterOutlined,
-  CreditCardOutlined,
-  ShopOutlined,
-  SwapOutlined,
-  LockOutlined,
-  UnlockOutlined
+  DollarOutlined,
+  CalculatorOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { transactionAPI, creditAPI, unifiedAPI } from '../../services/api';
@@ -61,6 +57,31 @@ const { TabPane } = Tabs;
 const { confirm } = Modal;
 const { Option } = Select;
 
+// Helper function for alpha color
+const alpha = (color, opacity) => {
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
+
+// ==================== DEFAULT STATS ====================
+const getDefaultCashierStats = () => ({
+  totalRevenue: 0,
+  totalCost: 0,
+  totalProfit: 0,
+  totalTransactions: 0,
+  totalItemsSold: 0,
+  profitMargin: 0,
+  creditSalesCount: 0,
+  totalCreditAmount: 0,
+  outstandingCredit: 0,
+  cashierCredits: [],
+  dailyPerformance: [],
+  topProducts: []
+});
+
 // ==================== CASHIER ANALYTICS COMPONENT ====================
 const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
   const [dateRange, setDateRange] = useState([
@@ -70,26 +91,22 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
   const [timeRange, setTimeRange] = useState('7d');
   const [selectedShopFilter, setSelectedShopFilter] = useState('all');
 
-  // Get assigned shops for filtering
   const assignedShops = useMemo(() => {
     if (!cashier) return [];
     return cashier.assignedShops || [];
   }, [cashier]);
 
-  // Calculate cashier performance metrics with credit support and shop filtering
   const cashierStats = useMemo(() => {
     if (!cashier || !transactions || !Array.isArray(transactions)) {
       return getDefaultCashierStats();
     }
 
-    // Filter transactions for this cashier
     let cashierTransactions = transactions.filter(t => 
       t.cashierName === cashier.name || 
       t.cashierId === cashier._id ||
       t.cashierId?._id === cashier._id
     );
 
-    // Apply shop filter if selected
     if (selectedShopFilter !== 'all') {
       cashierTransactions = cashierTransactions.filter(t => 
         t.shop === selectedShopFilter || 
@@ -99,14 +116,11 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       );
     }
 
-    // Filter by date range
     const filteredTransactions = cashierTransactions.filter(t => {
       if (!dateRange || dateRange.length !== 2) return true;
-      
       const transactionDate = dayjs(t.saleDate || t.createdAt);
       const startDate = dateRange[0];
       const endDate = dateRange[1];
-      
       return transactionDate.isAfter(startDate.subtract(1, 'day')) && 
              transactionDate.isBefore(endDate.add(1, 'day'));
     });
@@ -115,16 +129,13 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       return getDefaultCashierStats();
     }
 
-    // Calculate metrics
     const totalRevenue = filteredTransactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0);
     const totalCost = filteredTransactions.reduce((sum, t) => sum + (t.cost || 0), 0);
     const totalProfit = CalculationUtils.calculateProfit(totalRevenue, totalCost);
     const totalTransactions = filteredTransactions.length;
     const totalItemsSold = filteredTransactions.reduce((sum, t) => sum + (t.itemsCount || 0), 0);
-    
     const profitMargin = CalculationUtils.calculateProfitMargin(totalRevenue, totalProfit);
 
-    // Credit-specific calculations
     const cashierCredits = credits?.filter(credit => 
       credit.cashierId === cashier._id || 
       credit.cashierName === cashier.name ||
@@ -137,7 +148,6 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       .filter(credit => credit.status !== 'paid')
       .reduce((sum, credit) => sum + (credit.balanceDue || 0), 0);
 
-    // Daily performance
     const dailyPerformance = {};
     filteredTransactions.forEach(t => {
       const date = dayjs(t.saleDate || t.createdAt).format('YYYY-MM-DD');
@@ -164,7 +174,6 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       }
     });
 
-    // Top products
     const productSales = {};
     filteredTransactions.forEach(t => {
       t.items?.forEach(item => {
@@ -190,13 +199,10 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       totalTransactions,
       totalItemsSold,
       profitMargin,
-      
-      // Credit metrics
       creditSalesCount: creditSales.length,
       totalCreditAmount,
       outstandingCredit,
       cashierCredits,
-      
       dailyPerformance: Object.values(dailyPerformance).sort((a, b) => 
         dayjs(a.date).valueOf() - dayjs(b.date).valueOf()
       ),
@@ -206,51 +212,26 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
       period: {
         start: dateRange[0]?.format('YYYY-MM-DD'),
         end: dateRange[1]?.format('YYYY-MM-DD')
-      },
-      shopFilter: selectedShopFilter,
-      shopCount: assignedShops.length
+      }
     };
-  }, [cashier, transactions, credits, dateRange, selectedShopFilter, assignedShops]);
+  }, [cashier, transactions, credits, dateRange, selectedShopFilter]);
 
-  const getProfitColor = (profit) => {
-    return profit >= 0 ? '#3f8600' : '#cf1322';
-  };
-
-  const getProfitIcon = (profit) => {
-    return profit >= 0 ? <RiseOutlined /> : <FallOutlined />;
-  };
-
-  const formatCurrency = (amount) => {
-    return CalculationUtils.formatCurrency(amount);
-  };
+  const getProfitColor = (profit) => profit >= 0 ? '#3f8600' : '#cf1322';
+  const getProfitIcon = (profit) => profit >= 0 ? <RiseOutlined /> : <FallOutlined />;
+  const formatCurrency = (amount) => CalculationUtils.formatCurrency(amount);
 
   const handleTimeRangeChange = (value) => {
     setTimeRange(value);
     const now = dayjs();
     let startDate;
-
     switch (value) {
-      case 'today':
-        startDate = now.startOf('day');
-        break;
-      case '7d':
-        startDate = now.subtract(7, 'days');
-        break;
-      case '30d':
-        startDate = now.subtract(30, 'days');
-        break;
-      case '90d':
-        startDate = now.subtract(90, 'days');
-        break;
-      default:
-        startDate = now.subtract(7, 'days');
+      case 'today': startDate = now.startOf('day'); break;
+      case '7d': startDate = now.subtract(7, 'days'); break;
+      case '30d': startDate = now.subtract(30, 'days'); break;
+      case '90d': startDate = now.subtract(90, 'days'); break;
+      default: startDate = now.subtract(7, 'days');
     }
-
     setDateRange([startDate, now]);
-  };
-
-  const handleShopFilterChange = (value) => {
-    setSelectedShopFilter(value);
   };
 
   if (!cashier) {
@@ -263,10 +244,9 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
 
   return (
     <div>
-      {/* Header with Cashier Info and Filters */}
       <Card>
         <Row gutter={[16, 16]} align="middle">
-          <Col span={12}>
+          <Col xs={24} md={12}>
             <Space>
               <Avatar size="large" style={{ backgroundColor: '#1890ff' }}>
                 {cashier.name?.charAt(0)?.toUpperCase()}
@@ -278,26 +258,24 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
                   <Tag color={cashier.status === 'active' ? 'green' : 'red'}>
                     {cashier.status?.toUpperCase()}
                   </Tag>
-                  {cashier.club && <Tag color="blue">{cashier.club}</Tag>}
                   {cashier.assignedShops && cashier.assignedShops.length > 1 && (
-                    <Tag color="purple">Multi-Shop Access</Tag>
+                    <Tag color="purple" icon={<SwapOutlined />}>Multi-Shop Access</Tag>
                   )}
                 </div>
               </div>
             </Space>
           </Col>
-          <Col span={12}>
+          <Col xs={24} md={12}>
             <Space style={{ float: 'right' }} wrap>
-              {/* Shop Filter - Only show if cashier has multiple shops */}
               {assignedShops.length > 1 && (
                 <>
                   <Text strong>Shop:</Text>
                   <Select 
                     value={selectedShopFilter}
-                    onChange={handleShopFilterChange}
+                    onChange={setSelectedShopFilter}
                     style={{ width: 150 }}
                   >
-                    <Option value="all">All Assigned Shops</Option>
+                    <Option value="all">All Shops</Option>
                     {assignedShops.map(shop => (
                       <Option key={shop.shopId || shop._id} value={shop.shopId || shop._id}>
                         {shop.name || shop.shopName}
@@ -307,11 +285,7 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
                 </>
               )}
               <Text strong>Time:</Text>
-              <Select 
-                value={timeRange} 
-                onChange={handleTimeRangeChange}
-                style={{ width: 120 }}
-              >
+              <Select value={timeRange} onChange={handleTimeRangeChange} style={{ width: 120 }}>
                 <Option value="today">Today</Option>
                 <Option value="7d">Last 7 Days</Option>
                 <Option value="30d">Last 30 Days</Option>
@@ -319,10 +293,7 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
                 <Option value="custom">Custom</Option>
               </Select>
               {timeRange === 'custom' && (
-                <DatePicker.RangePicker
-                  value={dateRange}
-                  onChange={setDateRange}
-                />
+                <DatePicker.RangePicker value={dateRange} onChange={setDateRange} />
               )}
             </Space>
           </Col>
@@ -332,23 +303,17 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
             <Tag color="blue">
               Filtering by: {assignedShops.find(s => (s.shopId || s._id) === selectedShopFilter)?.name || 'Selected Shop'}
             </Tag>
-            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-              Showing data for selected shop only
-            </Text>
           </div>
         )}
       </Card>
 
-      {/* Key Metrics */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} sm={12} md={8} lg={6}>
           <Card>
             <Statistic
               title="Total Revenue"
               value={cashierStats.totalRevenue}
-              formatter={(value) => (
-                <span>KES {value?.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              )}
+              formatter={(value) => `KES ${value?.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               valueStyle={{ color: '#1890ff' }}
             />
             <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -361,9 +326,7 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
             <Statistic
               title="Total Profit"
               value={cashierStats.totalProfit}
-              formatter={(value) => (
-                <span>KES {value?.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              )}
+              formatter={(value) => `KES ${value?.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               valueStyle={{ color: getProfitColor(cashierStats.totalProfit) }}
               prefix={getProfitIcon(cashierStats.totalProfit)}
             />
@@ -380,9 +343,7 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
             <Statistic
               title="Credit Sales"
               value={cashierStats.totalCreditAmount || 0}
-              formatter={(value) => (
-                <span>KES {value?.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              )}
+              formatter={(value) => `KES ${value?.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               valueStyle={{ color: '#faad14' }}
             />
             <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -395,9 +356,7 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
             <Statistic
               title="Outstanding Credit"
               value={cashierStats.outstandingCredit || 0}
-              formatter={(value) => (
-                <span>KES {value?.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              )}
+              formatter={(value) => `KES ${value?.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               valueStyle={{ color: '#cf1322' }}
             />
             <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -407,20 +366,16 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
         </Col>
       </Row>
 
-      {/* Detailed Analytics */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        {/* Credit Analysis */}
         <Col xs={24} lg={12}>
           <Card title="Credit Analysis" size="small">
-            {cashierStats.cashierCredits && cashierStats.cashierCredits.length > 0 ? (
+            {cashierStats.cashierCredits?.length > 0 ? (
               <List
                 dataSource={cashierStats.cashierCredits.slice(0, 5)}
                 renderItem={credit => (
                   <List.Item>
                     <List.Item.Meta
-                      avatar={
-                        <Avatar icon={<CreditCardOutlined />} />
-                      }
+                      avatar={<Avatar icon={<CreditCardOutlined />} />}
                       title={
                         <Space>
                           <Text strong>{credit.customerName || 'Unknown Customer'}</Text>
@@ -448,11 +403,9 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
             )}
           </Card>
         </Col>
-
-        {/* Top Products */}
         <Col xs={24} lg={12}>
           <Card title="Top Selling Products" size="small">
-            {cashierStats.topProducts.length > 0 ? (
+            {cashierStats.topProducts?.length > 0 ? (
               <List
                 dataSource={cashierStats.topProducts}
                 renderItem={(product, index) => (
@@ -466,12 +419,8 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
                       title={product.name}
                       description={
                         <Space direction="vertical" size={0}>
-                          <Text type="secondary">
-                            Sold: {product.quantity} units
-                          </Text>
-                          <Text strong>
-                            Revenue: {formatCurrency(product.revenue)}
-                          </Text>
+                          <Text type="secondary">Sold: {product.quantity} units</Text>
+                          <Text strong>Revenue: {formatCurrency(product.revenue)}</Text>
                           <Text style={{ color: getProfitColor(product.profit) }}>
                             Profit: {formatCurrency(product.profit)}
                           </Text>
@@ -488,9 +437,8 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
         </Col>
       </Row>
 
-      {/* Daily Performance */}
       <Card title="Daily Performance" style={{ marginTop: 16 }}>
-        {cashierStats.dailyPerformance.length > 0 ? (
+        {cashierStats.dailyPerformance?.length > 0 ? (
           <List
             dataSource={cashierStats.dailyPerformance}
             renderItem={day => (
@@ -501,27 +449,18 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
                     <Space>
                       <Text strong>{dayjs(day.date).format('DD MMM YYYY')}</Text>
                       <Tag color="blue">{day.transactions} transactions</Tag>
-                      {day.creditSales > 0 && (
-                        <Tag color="orange">{day.creditSales} credit</Tag>
-                      )}
-                      {day.shopName && day.shopName !== 'Unknown' && (
-                        <Tag color="green">{day.shopName}</Tag>
-                      )}
+                      {day.creditSales > 0 && <Tag color="orange">{day.creditSales} credit</Tag>}
                     </Space>
                   }
                   description={
                     <Row gutter={16}>
                       <Col span={6}>
                         <Text strong>Revenue: </Text>
-                        <Text style={{ color: '#1890ff' }}>
-                          {formatCurrency(day.revenue)}
-                        </Text>
+                        <Text style={{ color: '#1890ff' }}>{formatCurrency(day.revenue)}</Text>
                       </Col>
                       <Col span={6}>
                         <Text strong>Profit: </Text>
-                        <Text style={{ color: getProfitColor(day.profit) }}>
-                          {formatCurrency(day.profit)}
-                        </Text>
+                        <Text style={{ color: getProfitColor(day.profit) }}>{formatCurrency(day.profit)}</Text>
                       </Col>
                       <Col span={6}>
                         <Text strong>Items: </Text>
@@ -529,9 +468,7 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
                       </Col>
                       <Col span={6}>
                         <Text strong>Credit: </Text>
-                        <Text style={{ color: '#faad14' }}>
-                          {formatCurrency(day.creditAmount)}
-                        </Text>
+                        <Text style={{ color: '#faad14' }}>{formatCurrency(day.creditAmount)}</Text>
                       </Col>
                     </Row>
                   }
@@ -540,27 +477,12 @@ const CashierAnalytics = ({ cashier, transactions, credits, loading }) => {
             )}
           />
         ) : (
-          <Empty description="No daily performance data available for the selected period" />
+          <Empty description="No daily performance data available" />
         )}
       </Card>
     </div>
   );
 };
-
-const getDefaultCashierStats = () => ({
-  totalRevenue: 0,
-  totalCost: 0,
-  totalProfit: 0,
-  totalTransactions: 0,
-  totalItemsSold: 0,
-  profitMargin: 0,
-  creditSalesCount: 0,
-  totalCreditAmount: 0,
-  outstandingCredit: 0,
-  cashierCredits: [],
-  dailyPerformance: [],
-  topProducts: []
-});
 
 // ==================== MAIN CASHIER MANAGEMENT COMPONENT ====================
 const CashierManagement = () => {
@@ -585,11 +507,6 @@ const CashierManagement = () => {
   const [availableShops, setAvailableShops] = useState([]);
   const [assignedShopIds, setAssignedShopIds] = useState([]);
   const [shopAssignmentError, setShopAssignmentError] = useState(null);
-  const [currentUser] = useState({
-    _id: 'admin',
-    role: 'admin',
-    name: 'Admin User'
-  });
   
   const [form] = Form.useForm();
   const cashiersCache = useRef({
@@ -597,7 +514,7 @@ const CashierManagement = () => {
     lastFetch: null
   });
 
-  // Configure axios with correct base URL
+  // Create API instance
   const createApiInstance = () => {
     const instance = axios.create({
       baseURL: process.env.REACT_APP_API_URL || 'https://back-pos.vercel.app',
@@ -621,7 +538,7 @@ const CashierManagement = () => {
     return instance;
   };
 
-  // Fetch cashiers with enhanced data
+  // Fetch cashiers
   const fetchCashiers = useCallback(async (forceRefresh = false) => {
     try {
       const cacheValid = cashiersCache.current.lastFetch && 
@@ -647,7 +564,6 @@ const CashierManagement = () => {
         cashiersData = response.data;
       }
       
-      // Process cashiers to include assigned shops info
       const enhancedCashiers = cashiersData.map(cashier => ({
         ...cashier,
         assignedShops: cashier.assignedShops || [],
@@ -663,38 +579,30 @@ const CashierManagement = () => {
       };
       
       setCashiers(enhancedCashiers);
-      console.log(`✅ Fetched ${enhancedCashiers.length} cashiers with shop assignments`);
     } catch (error) {
-      console.error('❌ Fetch cashiers error:', error);
-      
+      console.error('Fetch cashiers error:', error);
       if (cashiersCache.current.data.length > 0) {
         setCashiers(cashiersCache.current.data);
         message.warning('Using cached data - could not refresh from server');
       } else {
-        handleApiError(error, 'Failed to fetch cashiers');
+        message.error('Failed to fetch cashiers');
       }
     } finally {
       setLoading(prev => ({ ...prev, table: false }));
     }
   }, []);
 
-  // Fetch transactions for analytics
+  // Fetch transactions
   const fetchTransactions = useCallback(async (cashierId = null) => {
     try {
       setLoading(prev => ({ ...prev, analytics: true }));
-      console.log('🔄 Fetching transactions for analytics...', { cashierId });
-      
       const params = {};
-      if (cashierId) {
-        params.cashierId = cashierId;
-      }
+      if (cashierId) params.cashierId = cashierId;
       
       let transactionsData;
-      
       try {
         transactionsData = await unifiedAPI.getCombinedTransactions(params);
       } catch (unifiedError) {
-        console.warn('Unified API failed, trying transactionAPI directly...', unifiedError);
         const rawTransactions = await transactionAPI.getAll(params);
         transactionsData = {
           transactions: rawTransactions,
@@ -702,15 +610,7 @@ const CashierManagement = () => {
         };
       }
       
-      console.log('✅ Transactions data structure:', {
-        hasTransactions: !!transactionsData.transactions,
-        transactionCount: transactionsData.transactions?.length || 0,
-        hasSalesWithProfit: !!transactionsData.salesWithProfit,
-        salesWithProfitCount: transactionsData.salesWithProfit?.length || 0
-      });
-
       const salesData = transactionsData.salesWithProfit || transactionsData.transactions || [];
-      
       const processedData = CalculationUtils.processComprehensiveData({
         transactions: salesData,
         expenses: [],
@@ -721,32 +621,24 @@ const CashierManagement = () => {
       }, null);
       
       setTransactions(processedData.salesWithProfit || []);
-      
-      console.log(`✅ Loaded ${processedData.salesWithProfit?.length || 0} transactions for analytics`);
-      
     } catch (error) {
-      console.error('❌ Error fetching transactions for analytics:', error);
-      message.error('Failed to load transaction data for analytics');
+      console.error('Error fetching transactions:', error);
+      message.error('Failed to load transaction data');
       setTransactions([]);
     } finally {
       setLoading(prev => ({ ...prev, analytics: false }));
     }
   }, []);
 
-  // Fetch credits for analytics
+  // Fetch credits
   const fetchCredits = useCallback(async (cashierId = null) => {
     try {
-      console.log('🔄 Fetching credits data...', { cashierId });
-      
       const params = {};
-      if (cashierId) {
-        params.cashierId = cashierId;
-      }
+      if (cashierId) params.cashierId = cashierId;
       
       const creditsData = await creditAPI.getAll(params);
       
       let creditsArray = [];
-      
       if (creditsData && Array.isArray(creditsData.credits)) {
         creditsArray = creditsData.credits;
       } else if (creditsData && Array.isArray(creditsData.creditTransactions)) {
@@ -757,11 +649,10 @@ const CashierManagement = () => {
         creditsArray = creditsData;
       }
       
-      console.log('✅ Credits received:', creditsArray.length);
       setCredits(creditsArray);
     } catch (error) {
-      console.error('❌ Error fetching credits data:', error);
-      message.warning('Failed to load credit data for analytics');
+      console.error('Error fetching credits:', error);
+      message.warning('Failed to load credit data');
       setCredits([]);
     }
   }, []);
@@ -770,47 +661,21 @@ const CashierManagement = () => {
     fetchCashiers();
   }, [fetchCashiers]);
 
-  // Fetch analytics data when cashier is selected
   useEffect(() => {
     if (activeTab === 'performance' && selectedCashier) {
-      console.log('📊 Loading analytics data for cashier:', selectedCashier.name, selectedCashier._id);
-      
       const cashierId = selectedCashier._id;
-      
       Promise.all([
         fetchTransactions(cashierId),
         fetchCredits(cashierId)
-      ]).then(() => {
-        console.log('✅ All analytics data loaded for cashier:', selectedCashier.name);
-      }).catch(error => {
-        console.error('❌ Error loading analytics data:', error);
-      });
+      ]);
     }
   }, [activeTab, selectedCashier, fetchTransactions, fetchCredits]);
-
-  const handleApiError = (error, defaultMessage) => {
-    let errorMessage = defaultMessage;
-    
-    if (error.response) {
-      errorMessage = error.response.data?.error || 
-                   error.response.data?.message || 
-                   `Server error: ${error.response.status}`;
-    } else if (error.request) {
-      errorMessage = 'No response from server. Please check your connection.';
-    } else {
-      errorMessage = error.message;
-    }
-    
-    message.error(errorMessage);
-    console.error('API Error Details:', error);
-  };
 
   const handleAddCashier = () => {
     if (connectionError) {
       message.error('Cannot connect to server. Please check if the backend is running.');
       return;
     }
-    
     form.resetFields();
     setEditingCashier(null);
     setIsModalVisible(true);
@@ -834,17 +699,13 @@ const CashierManagement = () => {
   const handleViewAnalytics = (cashier) => {
     setSelectedCashier(cashier);
     setActiveTab('performance');
-    
-    console.log('🔍 Viewing analytics for cashier:', cashier.name, cashier._id);
-    
     setTimeout(() => {
       fetchTransactions(cashier._id);
       fetchCredits(cashier._id);
     }, 100);
   };
 
-  // ==================== SHOP ASSIGNMENT HANDLERS ====================
-  
+  // Shop Assignment Handlers
   const handleOpenShopAssignment = async (cashier) => {
     setSelectedCashierForAssignment(cashier);
     setShopAssignmentError(null);
@@ -858,7 +719,6 @@ const CashierManagement = () => {
       if (response.data.success) {
         const shops = response.data.data.shops || [];
         setAvailableShops(shops);
-        
         const assignedIds = shops
           .filter(shop => shop.isAssigned)
           .map(shop => shop._id);
@@ -868,7 +728,7 @@ const CashierManagement = () => {
         setShopAssignmentError('Failed to load shop data');
       }
     } catch (error) {
-      console.error('Error loading shops for assignment:', error);
+      console.error('Error loading shops:', error);
       setShopAssignmentError('Failed to load shops. Please try again.');
       message.error('Failed to load shop assignment data');
     } finally {
@@ -892,7 +752,6 @@ const CashierManagement = () => {
       const shopsToAssign = assignedShopIds.filter(id => !currentAssigned.includes(id));
       const shopsToRemove = currentAssigned.filter(id => !assignedShopIds.includes(id));
       
-      // Assign new shops
       if (shopsToAssign.length > 0) {
         await api.post(`/api/cashiers/${selectedCashierForAssignment._id}/assign-shops`, {
           shopIds: shopsToAssign,
@@ -901,7 +760,6 @@ const CashierManagement = () => {
         });
       }
       
-      // Remove shops
       if (shopsToRemove.length > 0) {
         await api.post(`/api/cashiers/${selectedCashierForAssignment._id}/assign-shops`, {
           shopIds: shopsToRemove,
@@ -947,7 +805,6 @@ const CashierManagement = () => {
       
       if (editingCashier) {
         const response = await api.patch(`/api/cashiers/${editingCashier._id}`, processedValues);
-        
         if (response.data.success) {
           message.success('Cashier updated successfully');
           setIsModalVisible(false);
@@ -957,7 +814,6 @@ const CashierManagement = () => {
         }
       } else {
         const response = await api.post('/api/cashiers', processedValues);
-        
         if (response.data.success) {
           message.success('Cashier added successfully');
           setIsModalVisible(false);
@@ -971,7 +827,7 @@ const CashierManagement = () => {
           error.response.data.error && error.response.data.error.includes('email')) {
         message.error('Cashier with this email already exists');
       } else {
-        handleApiError(error, editingCashier ? 'Failed to update cashier' : 'Failed to add cashier');
+        message.error(editingCashier ? 'Failed to update cashier' : 'Failed to add cashier');
       }
     } finally {
       setLoading(prev => ({ ...prev, form: false }));
@@ -979,7 +835,7 @@ const CashierManagement = () => {
   };
 
   const handleDeleteCashier = async (id) => {
-    Modal.confirm({
+    confirm({
       title: 'Are you sure you want to delete this cashier?',
       content: 'This action cannot be undone.',
       okText: 'Yes, delete',
@@ -993,7 +849,7 @@ const CashierManagement = () => {
           message.success('Cashier deleted successfully');
           fetchCashiers(true);
         } catch (error) {
-          handleApiError(error, 'Failed to delete cashier');
+          message.error('Failed to delete cashier');
         } finally {
           setLoading(prev => ({ ...prev, action: false }));
         }
@@ -1010,7 +866,6 @@ const CashierManagement = () => {
     }
   };
 
-  // Enhanced columns with shop assignment and analytics
   const columns = [
     { 
       title: 'Name', 
@@ -1149,7 +1004,7 @@ const CashierManagement = () => {
 
   return (
     <div className="management-content">
-      <div className="table-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={2}>Cashier Management</Title>
         <Space>
           <Button 
@@ -1270,11 +1125,7 @@ const CashierManagement = () => {
         destroyOnClose
         width={600}
       >
-        <Form 
-          form={form}
-          onFinish={handleSubmit} 
-          layout="vertical"
-        >
+        <Form form={form} onFinish={handleSubmit} layout="vertical">
           <Form.Item 
             name="name" 
             label="Full Name" 
@@ -1347,11 +1198,7 @@ const CashierManagement = () => {
         title="Cashier Details"
         open={isViewModalVisible}
         onCancel={() => setIsViewModalVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setIsViewModalVisible(false)}>
-            Close
-          </Button>
-        ]}
+        footer={[<Button key="close" onClick={() => setIsViewModalVisible(false)}>Close</Button>]}
         width={500}
       >
         {editingCashier && (
@@ -1557,9 +1404,7 @@ const CashierManagement = () => {
                             <Tag color={shop.status === 'active' ? 'green' : 'red'}>
                               {shop.status?.toUpperCase()}
                             </Tag>
-                            {isPrimary && (
-                              <Tag color="gold">Primary</Tag>
-                            )}
+                            {isPrimary && <Tag color="gold">Primary</Tag>}
                           </Space>
                         }
                         description={
@@ -1583,34 +1428,12 @@ const CashierManagement = () => {
             <Empty 
               description="No active shops available to assign" 
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-            >
-              <Button 
-                type="primary" 
-                onClick={() => {
-                  setAvailableShops([]);
-                  setShopAssignmentError('No shops available. Please create a shop first.');
-                }}
-              >
-                Create Shop
-              </Button>
-            </Empty>
+            />
           )}
         </Spin>
       </Modal>
     </div>
   );
-};
-
-// Import missing icons
-import { SaveOutlined, StarOutlined } from '@ant-design/icons';
-
-// Add alpha utility for styling
-const alpha = (color, opacity) => {
-  const hex = color.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 };
 
 export default CashierManagement;
