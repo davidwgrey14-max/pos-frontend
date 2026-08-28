@@ -396,162 +396,131 @@ export const authAPI = {
     }
   },
 
-  // ==================== MANAGER LOGIN ====================
+  // src/services/api.js - Updated managerLogin
 
-  managerLogin: async (credentials) => {
-    try {
-      console.log('🔐 Attempting manager login...', { 
-        email: credentials?.email, 
-        hasCode: !!credentials?.secureCode 
+managerLogin: async (credentials) => {
+  try {
+    console.log('🔐 Attempting manager login...', { 
+      email: credentials?.email, 
+      hasCode: !!credentials?.secureCode 
+    });
+    
+    // Validate input
+    if (!credentials || !credentials.email) {
+      throw new Error('Email is required');
+    }
+    
+    // Step 1: If no secure code provided, request one
+    if (!credentials.secureCode) {
+      console.log('📧 Requesting secure code for:', credentials.email);
+      
+      const codeRequest = await authAPI.requestSecureCode({
+        email: credentials.email
       });
       
-      // Validate input
-      if (!credentials || !credentials.email) {
-        throw new Error('Email is required');
-      }
-      
-      // Step 1: If no secure code provided, request one
-      if (!credentials.secureCode) {
-        console.log('📧 Requesting secure code for:', credentials.email);
-        
-        const codeRequest = await authAPI.requestSecureCode({
-          email: credentials.email
-        });
-        
-        // Handle development mode (email disabled)
-        if (codeRequest.developmentMode && codeRequest.secureCode) {
-          console.log('🔑 Development mode - Code:', codeRequest.secureCode);
-          
-          // Auto-verify in development mode
-          try {
-            const verification = await authAPI.verifySecureCode({
-              email: credentials.email,
-              code: codeRequest.secureCode
-            });
-            
-            if (!verification.success) {
-              throw new Error(verification.message || 'Auto-verification failed');
-            }
-            
-            // Store manager data
-            if (verification.token) {
-              localStorage.setItem('managerToken', verification.token);
-              localStorage.setItem('sessionToken', verification.token);
-              localStorage.setItem('authToken', verification.token);
-              
-              if (verification.user) {
-                localStorage.setItem('managerData', JSON.stringify(verification.user));
-                localStorage.setItem('userData', JSON.stringify(verification.user));
-              }
-            }
-            
-            return {
-              success: true,
-              user: verification.user,
-              token: verification.token,
-              device: verification.device,
-              sessionId: verification.sessionId,
-              message: 'Development login successful',
-              isDevMode: true
-            };
-          } catch (verifyError) {
-            console.error('❌ Auto-verification failed:', verifyError);
-            throw new Error('Auto-verification failed. Please try again.');
-          }
-        }
-        
-        if (!codeRequest.success) {
-          throw new Error(codeRequest.message || 'Failed to request secure code');
-        }
-        
-        console.log('✅ Secure code requested successfully');
-        
-        // Return state indicating user should enter the code
+      // Handle development mode (email disabled)
+      if (codeRequest.developmentMode && codeRequest.secureCode) {
+        console.log('🔑 Development mode - Code:', codeRequest.secureCode);
         return {
           success: true,
           requiresVerification: true,
-          message: codeRequest.message || 'Secure code sent to your email. Please check your inbox.',
+          message: codeRequest.message || 'Secure code generated',
           email: credentials.email,
           expiresIn: codeRequest.expiresIn || 15,
-          devMode: false
+          devMode: true,
+          devCode: codeRequest.secureCode
         };
       }
       
-      // Step 2: Verify the secure code
-      console.log('🔐 Verifying secure code for:', credentials.email);
-      
-      const verification = await authAPI.verifySecureCode({
-        email: credentials.email,
-        code: credentials.secureCode
-      });
-      
-      // Check if device verification is required
-      if (verification.requiresVerification) {
-        console.log('📱 Device verification required');
-        return {
-          success: true,
-          requiresDeviceVerification: true,
-          message: verification.message || 'New device detected. Please wait for admin approval.',
-          deviceInfo: verification.deviceInfo,
-          email: credentials.email
-        };
-      }
-      
-      if (!verification.success) {
-        throw new Error(verification.message || 'Verification failed');
-      }
-      
-      console.log('✅ Manager login successful');
-      
-      // Store manager data
-      if (verification.token) {
-        localStorage.setItem('managerToken', verification.token);
-        localStorage.setItem('sessionToken', verification.token);
-        localStorage.setItem('authToken', verification.token);
-        
-        if (verification.user) {
-          localStorage.setItem('managerData', JSON.stringify(verification.user));
-          localStorage.setItem('userData', JSON.stringify(verification.user));
-        }
+      if (!codeRequest.success) {
+        throw new Error(codeRequest.message || 'Failed to request secure code');
       }
       
       return {
         success: true,
-        user: verification.user,
-        token: verification.token,
-        device: verification.device,
-        sessionId: verification.sessionId,
-        message: 'Manager login successful',
-        requiresVerification: false,
-        requiresDeviceVerification: false
+        requiresVerification: true,
+        message: codeRequest.message || 'Secure code sent to your email.',
+        email: credentials.email,
+        expiresIn: codeRequest.expiresIn || 15,
+        devMode: false
       };
-      
-    } catch (error) {
-      console.error('❌ Manager login error:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      });
-      
-      // Parse error for better user feedback
-      let errorMessage = error.message || 'Manager login failed';
-      
-      if (error.response?.status === 404) {
-        errorMessage = 'Login service unavailable. Please contact administrator.';
-      } else if (error.response?.status === 401) {
-        errorMessage = 'Invalid credentials. Please try again.';
-      } else if (error.response?.status === 403) {
-        errorMessage = error.response?.data?.message || 'Access denied. Please contact administrator.';
-      } else if (error.response?.status === 400) {
-        errorMessage = error.response?.data?.message || 'Invalid verification code. Please try again.';
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-      
-      throw new Error(errorMessage);
     }
-  },
-
+    
+    // Step 2: Verify the secure code
+    console.log('🔐 Verifying secure code for:', credentials.email);
+    
+    const verification = await authAPI.verifySecureCode({
+      email: credentials.email,
+      code: credentials.secureCode
+    });
+    
+    console.log('📥 Verification response:', verification);
+    
+    // Check if device verification is required
+    if (verification.requiresVerification) {
+      console.log('📱 Device verification required');
+      return {
+        success: true,
+        requiresDeviceVerification: true,
+        message: verification.message || 'New device detected. Please wait for admin approval.',
+        deviceInfo: verification.deviceInfo,
+        email: credentials.email
+      };
+    }
+    
+    if (!verification.success) {
+      throw new Error(verification.message || 'Verification failed');
+    }
+    
+    console.log('✅ Manager login successful');
+    
+    // Store manager data
+    if (verification.token) {
+      localStorage.setItem('managerToken', verification.token);
+      localStorage.setItem('sessionToken', verification.token);
+      localStorage.setItem('authToken', verification.token);
+      
+      if (verification.user) {
+        localStorage.setItem('managerData', JSON.stringify(verification.user));
+        localStorage.setItem('userData', JSON.stringify(verification.user));
+      }
+    }
+    
+    return {
+      success: true,
+      user: verification.user,
+      token: verification.token,
+      device: verification.device,
+      sessionId: verification.sessionId,
+      message: 'Manager login successful',
+      requiresVerification: false,
+      requiresDeviceVerification: false
+    };
+    
+  } catch (error) {
+    console.error('❌ Manager login error:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    
+    let errorMessage = error.message || 'Manager login failed';
+    
+    if (error.response?.status === 404) {
+      errorMessage = 'Login service unavailable. Please contact administrator.';
+    } else if (error.response?.status === 401) {
+      errorMessage = 'Invalid credentials. Please try again.';
+    } else if (error.response?.status === 403) {
+      errorMessage = error.response?.data?.message || 'Access denied. Please contact administrator.';
+    } else if (error.response?.status === 400) {
+      errorMessage = error.response?.data?.message || 'Invalid verification code. Please try again.';
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    }
+    
+    throw new Error(errorMessage);
+  }
+},
   // ==================== SECURE CODE LOGIN ====================
   
   requestSecureCode: async (emailData) => {
