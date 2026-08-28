@@ -1,4 +1,4 @@
-// src/pages/Manager/ManagerDashboard.jsx - Using existing Admin sub-pages
+// src/pages/Manager/ManagerDashboard.jsx - Using ALL existing Admin components
 import React, { useState, useEffect } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
@@ -32,17 +32,18 @@ import {
   CalculatorOutlined,
   CheckCircleOutlined
 } from '@ant-design/icons';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { unifiedAPI, shopAPI } from '../../services/api';
 
-// ==================== IMPORT EXISTING ADMIN COMPONENTS ====================
-// These are the existing Admin sub-pages - we're reusing them for Manager
+// ==================== IMPORT ALL EXISTING ADMIN COMPONENTS ====================
 import ShopManagement from '../Admin/ShopManagement';
 import CashierManagement from '../Admin/CashierManagement';
 import CreditManagement from '../Admin/CreditManagement';
+import ProductManagement from '../Admin/ProductManagement';
+import ExpenseManagement from '../Admin/ExpenseManagement';
+import Inventory from '../Admin/Inventory';
 
-// Note: Products, Transactions, Expenses, Inventory pages would need to be created
-// or imported from Admin if they exist. For now, we'll use placeholders or the Admin versions.
+// Note: Transactions component - if it exists, import it. Otherwise, it will use the placeholder.
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -102,33 +103,15 @@ const FinancialStatCard = ({ title, value, prefix = "KES", suffix, color, icon, 
   );
 };
 
-// ==================== PLACEHOLDER COMPONENTS ====================
-// These would be replaced with actual Admin components if they exist
-const ProductsManagement = () => (
-  <Card style={{ background: '#1A2332', border: '1px solid #2D3748', borderRadius: '12px' }}>
-    <Title level={4} style={{ color: 'white' }}>Products Management</Title>
-    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Manage your products here.</Text>
-  </Card>
-);
+// ==================== TRANSACTIONS COMPONENT (if exists, import from Admin) ====================
+// If you have a Transactions component in Admin, uncomment this:
+// import TransactionsManagement from '../Admin/TransactionsManagement';
 
+// Otherwise use placeholder:
 const TransactionsManagement = () => (
   <Card style={{ background: '#1A2332', border: '1px solid #2D3748', borderRadius: '12px' }}>
     <Title level={4} style={{ color: 'white' }}>Transactions</Title>
-    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>View all transactions.</Text>
-  </Card>
-);
-
-const ExpensesManagement = () => (
-  <Card style={{ background: '#1A2332', border: '1px solid #2D3748', borderRadius: '12px' }}>
-    <Title level={4} style={{ color: 'white' }}>Expenses</Title>
-    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Manage expenses here.</Text>
-  </Card>
-);
-
-const InventoryManagement = () => (
-  <Card style={{ background: '#1A2332', border: '1px solid #2D3748', borderRadius: '12px' }}>
-    <Title level={4} style={{ color: 'white' }}>Inventory</Title>
-    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Manage inventory here.</Text>
+    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>View all transactions here.</Text>
   </Card>
 );
 
@@ -632,7 +615,7 @@ const ManagerDashboard = () => {
       return null; // Show dashboard
     }
     if (path.includes('/manager/products')) {
-      return <ProductsManagement />;
+      return <ProductManagement />;
     }
     if (path.includes('/manager/shops')) {
       return <ShopManagement />;
@@ -644,10 +627,10 @@ const ManagerDashboard = () => {
       return <TransactionsManagement />;
     }
     if (path.includes('/manager/expenses')) {
-      return <ExpensesManagement />;
+      return <ExpenseManagement />;
     }
     if (path.includes('/manager/inventory')) {
-      return <InventoryManagement />;
+      return <Inventory />;
     }
     if (path.includes('/manager/credits')) {
       return <CreditManagement />;
