@@ -1,50 +1,45 @@
-// src/pages/Manager/ManagerDashboard.jsx - UPDATED to fetch exactly like AdminDashboard
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Layout, Card, Row, Col, Statistic, Typography, Tag, Space,
-  Button, Spin, Alert, Divider, List, Avatar,
-  Tabs, Input, Modal, Form, message, Descriptions,
-  Progress, Badge, Timeline, DatePicker, Table, Select,
-  Switch, Tooltip, Dropdown
+// src/pages/Manager/ManagerDashboard.jsx - EXACTLY LIKE ADMIN DASHBOARD
+import React, { useState, useEffect } from 'react';
+import { 
+  Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
+  Button, Modal, Space, Tooltip, message, Badge, Avatar,
+  Dropdown, Input, Select, DatePicker, Switch, Divider
 } from 'antd';
 import {
-  ShopOutlined, UserOutlined, DollarOutlined,
-  ShoppingCartOutlined, LogoutOutlined, ReloadOutlined,
-  ArrowLeftOutlined, BarChartOutlined, TransactionOutlined,
-  SearchOutlined, PlusOutlined, BarcodeOutlined,
-  CalculatorOutlined, DeleteOutlined, ScanOutlined,
-  PrinterOutlined, SafetyCertificateOutlined, QrcodeOutlined,
-  ClearOutlined, CreditCardOutlined, PhoneOutlined,
-  CalendarOutlined, BankOutlined, MoneyCollectOutlined,
-  HistoryOutlined, WarningOutlined, CheckCircleOutlined,
-  ClockCircleOutlined, TeamOutlined, ShoppingOutlined,
-  EyeOutlined, FileTextOutlined, InfoCircleOutlined,
-  RiseOutlined, FallOutlined, StockOutlined,
-  AppstoreOutlined, PieChartOutlined, LineChartOutlined,
-  ExportOutlined, FilterOutlined, WalletOutlined,
-  PercentageOutlined, DashboardOutlined
+  DashboardOutlined,
+  UserOutlined,
+  ShoppingOutlined,
+  AppstoreOutlined,
+  HistoryOutlined,
+  DollarOutlined,
+  ShopOutlined,
+  ProductOutlined,
+  WarningOutlined,
+  BarChartOutlined,
+  ReloadOutlined,
+  ExportOutlined,
+  ShoppingCartOutlined,
+  LineChartOutlined,
+  LogoutOutlined,
+  CreditCardOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  TeamOutlined,
+  RiseOutlined,
+  StockOutlined,
+  WalletOutlined,
+  PercentageOutlined,
+  CalculatorOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
-import { unifiedAPI, productAPI, creditAPI, transactionAPI, expenseAPI, shopAPI } from '../../services/api';
-import dayjs from 'dayjs';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { unifiedAPI, shopAPI } from '../../services/api';
 
-const { Header, Content } = Layout;
+const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
-const { TabPane } = Tabs;
-const { RangePicker } = DatePicker;
+const { Search } = Input;
 const { Option } = Select;
-
-// ==================== CONFIGURATION WITH FALLBACKS ====================
-const CONFIG = {
-  STOCK_ALERTS: {
-    LOW_STOCK_THRESHOLD: 5,
-    DEAD_STOCK_DAYS: 30,
-    MAX_RECENT_TRANSACTIONS: 20
-  },
-  APP: {
-    CURRENCY: 'KES'
-  }
-};
+const { RangePicker } = DatePicker;
 
 // ==================== FINANCIAL STAT CARD COMPONENT ====================
 const FinancialStatCard = ({ title, value, prefix = "KES", suffix, color, icon, description, type = 'currency' }) => {
@@ -100,8 +95,8 @@ const FinancialStatCard = ({ title, value, prefix = "KES", suffix, color, icon, 
 
 const ManagerDashboard = () => {
   const navigate = useNavigate();
-  const [manager, setManager] = useState(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const location = useLocation();
+  const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -113,8 +108,6 @@ const ManagerDashboard = () => {
     shop: 'all',
     autoRefresh: false
   });
-  
-  // Dashboard data state - structured like AdminDashboard
   const [dashboardData, setDashboardData] = useState({
     financialStats: {
       totalRevenue: 0,
@@ -150,32 +143,127 @@ const ManagerDashboard = () => {
     shopPerformance: []
   });
 
-  // Check authentication on mount
+  // Get current selected menu key based on path
+  const getSelectedKey = () => {
+    const path = location.pathname;
+    if (path.includes('/manager/dashboard') || path === '/manager') return 'dashboard';
+    if (path.includes('/manager/products')) return 'products';
+    if (path.includes('/manager/shops')) return 'shops';
+    if (path.includes('/manager/cashiers')) return 'cashiers';
+    if (path.includes('/manager/transactions')) return 'transactions';
+    if (path.includes('/manager/expenses')) return 'expenses';
+    if (path.includes('/manager/inventory')) return 'inventory';
+    if (path.includes('/manager/credits')) return 'credits';
+    return 'dashboard';
+  };
+
+  // User menu items
+  const userMenuItems = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: 'Profile Settings'
+    },
+    {
+      type: 'divider'
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: 'Logout',
+      danger: true,
+      onClick: () => {
+        Modal.confirm({
+          title: 'Confirm Logout',
+          content: 'Are you sure you want to logout?',
+          okText: 'Yes, Logout',
+          cancelText: 'Cancel',
+          onOk: () => {
+            localStorage.removeItem('managerData');
+            localStorage.removeItem('managerToken');
+            localStorage.removeItem('userData');
+            localStorage.removeItem('userToken');
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('sessionToken');
+            navigate('/cashier-login');
+            message.success('Logged out successfully');
+          }
+        });
+      }
+    }
+  ];
+
+  // Menu items for sidebar - SAME AS ADMIN
+  const menuItems = [
+    { 
+      key: 'dashboard', 
+      icon: <DashboardOutlined />, 
+      label: 'Dashboard' 
+    },
+    { 
+      key: 'products', 
+      icon: <ProductOutlined />, 
+      label: 'Products' 
+    },
+    { 
+      key: 'shops', 
+      icon: <ShopOutlined />, 
+      label: 'Shops' 
+    },
+    { 
+      key: 'cashiers', 
+      icon: <UserOutlined />, 
+      label: 'Cashiers' 
+    },
+    { 
+      key: 'transactions', 
+      icon: <BarChartOutlined />, 
+      label: 'Transactions' 
+    },
+    { 
+      key: 'expenses', 
+      icon: <DollarOutlined />, 
+      label: 'Expenses' 
+    },
+    { 
+      key: 'inventory', 
+      icon: <AppstoreOutlined />, 
+      label: 'Inventory' 
+    },
+    { 
+      key: 'credits', 
+      icon: <CreditCardOutlined />, 
+      label: 'Credits' 
+    }
+  ];
+
   useEffect(() => {
     const managerData = JSON.parse(localStorage.getItem('managerData') || localStorage.getItem('userData') || 'null');
     if (!managerData || managerData.role !== 'manager') {
       navigate('/cashier-login');
       return;
     }
-    setManager(managerData);
-    fetchDashboardData();
-  }, []);
+    // Only fetch dashboard data if on dashboard page
+    if (location.pathname === '/manager/dashboard' || location.pathname === '/manager') {
+      fetchDashboardData();
+    }
+  }, [location.pathname]);
 
-  // Auto-refresh effect
+  // Auto-refresh effect - only when on dashboard
   useEffect(() => {
     let intervalId;
-    if (filters.autoRefresh) {
+    if (filters.autoRefresh && (location.pathname === '/manager/dashboard' || location.pathname === '/manager')) {
       intervalId = setInterval(() => {
-        console.log('🔄 Auto-refreshing manager dashboard data...');
+        console.log('🔄 Auto-refreshing dashboard data...');
         fetchDashboardData();
       }, 30000);
     }
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [filters.autoRefresh]);
+  }, [filters.autoRefresh, location.pathname]);
 
-  // Fetch dashboard data - EXACTLY like AdminDashboard
+  // Fetch dashboard data from backend
   const fetchDashboardData = async (customFilters = null) => {
     const activeFilters = customFilters || filters;
     
@@ -212,7 +300,6 @@ const ManagerDashboard = () => {
         throw new Error('No response received from server');
       }
       
-      // Check if response has a success property
       if (response.success === true) {
         data = response.data || response;
       } else if (response.success === false) {
@@ -234,7 +321,6 @@ const ManagerDashboard = () => {
       console.error('💥 Dashboard fetch failed:', error);
       message.error(error.message || 'Failed to load dashboard data');
       
-      // Set default/empty data on error
       setDashboardData(prev => ({
         ...prev,
         financialStats: getDefaultStats(),
@@ -256,7 +342,7 @@ const ManagerDashboard = () => {
     }
   };
 
-  // Process dashboard data - EXACTLY like AdminDashboard
+  // Process dashboard data from API response
   const processDashboardData = (data, shops) => {
     const transactions = data?.salesWithProfit || data?.transactions || [];
     const financialStats = data?.financialStats || data?.summary || data?.financialStats || getDefaultStats();
@@ -362,12 +448,10 @@ const ManagerDashboard = () => {
     const netProfit = financialStats.netProfit || 0;
     const totalTransactions = financialStats.totalTransactions || totalSales || 0;
     
-    // Calculate derived metrics
     const averageTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
     const grossProfitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
     
-    // Credit metrics
     const totalCreditGiven = financialStats.totalCreditGiven || 0;
     const recognizedCreditRevenue = financialStats.recognizedCreditRevenue || 0;
     const outstandingCredit = financialStats.outstandingCredit || 0;
@@ -474,772 +558,788 @@ const ManagerDashboard = () => {
     return `${Number(value).toFixed(1)}%`;
   };
 
-  // Legacy data for backward compatibility with tabs
-  const totalRevenue = dashboardData.financialStats.totalRevenue || 0;
-  const totalTransactions = dashboardData.financialStats.totalTransactions || 0;
-  const totalExpenses = dashboardData.financialStats.totalExpenses || 0;
-  const lowStockProducts = dashboardData.lowStockProducts || [];
-  const outOfStockProducts = (dashboardData.lowStockProducts || []).filter(p => (p.currentStock || 0) === 0);
+  // Navigation handlers for menu items
+  const handleMenuClick = ({ key }) => {
+    switch (key) {
+      case 'dashboard':
+        navigate('/manager/dashboard');
+        break;
+      case 'products':
+        navigate('/manager/products');
+        break;
+      case 'shops':
+        navigate('/manager/shops');
+        break;
+      case 'cashiers':
+        navigate('/manager/cashiers');
+        break;
+      case 'transactions':
+        navigate('/manager/transactions');
+        break;
+      case 'expenses':
+        navigate('/manager/expenses');
+        break;
+      case 'inventory':
+        navigate('/manager/inventory');
+        break;
+      case 'credits':
+        navigate('/manager/credits');
+        break;
+      default:
+        navigate('/manager/dashboard');
+    }
+  };
 
-  // Stock alert columns
-  const stockColumns = [
+  // Table columns
+  const salesColumns = [
+    { 
+      title: 'Transaction', 
+      dataIndex: 'transactionNumber', 
+      key: 'transactionNumber', 
+      render: (text) => text || 'N/A' 
+    },
+    { 
+      title: 'Date', 
+      dataIndex: 'saleDate', 
+      key: 'saleDate', 
+      render: (date) => date ? new Date(date).toLocaleDateString() : 'N/A' 
+    },
+    { 
+      title: 'Customer', 
+      dataIndex: 'customerName', 
+      key: 'customerName', 
+      render: (name) => name || 'Walk-in' 
+    },
+    { 
+      title: 'Amount', 
+      dataIndex: 'totalAmount', 
+      key: 'totalAmount', 
+      render: (amount) => (
+        <Tag color={amount > 0 ? 'green' : 'red'}>{formatCurrency(amount)}</Tag>
+      )
+    },
+    { 
+      title: 'Shop', 
+      dataIndex: 'shop', 
+      key: 'shop', 
+      render: (text) => text || 'Unknown' 
+    }
+  ];
+
+  const lowStockColumns = [
     { title: 'Product', dataIndex: 'name', key: 'name' },
-    { title: 'Category', dataIndex: 'category', key: 'category' },
-    { title: 'Stock', dataIndex: 'currentStock', key: 'stock', render: (stock) => <Badge count={stock || 0} showZero color={stock === 0 ? 'red' : stock <= (CONFIG.STOCK_ALERTS.LOW_STOCK_THRESHOLD || 5) ? 'orange' : 'green'} /> },
-    { title: 'Min Stock', dataIndex: 'minStockLevel', key: 'minStock' },
-    { title: 'Status', key: 'status', render: (_, record) => {
-      const stock = record.currentStock || 0;
-      if (stock === 0) return <Tag color="red">OUT OF STOCK</Tag>;
-      if (stock <= (CONFIG.STOCK_ALERTS.LOW_STOCK_THRESHOLD || 5)) return <Tag color="orange">LOW STOCK</Tag>;
-      return <Tag color="green">IN STOCK</Tag>;
-    }},
+    { 
+      title: 'Stock', 
+      dataIndex: 'currentStock', 
+      key: 'currentStock',
+      render: (stock) => (
+        <Badge 
+          count={stock || 0} 
+          style={{ backgroundColor: stock <= 0 ? '#cf1322' : '#faad14' }}
+        />
+      )
+    },
+    { title: 'Min Level', dataIndex: 'minStockLevel', key: 'minStockLevel', render: (val) => val || 5 }
   ];
 
-  // Dead stock columns
-  const deadStockColumns = [
-    { title: 'Product', dataIndex: 'name', key: 'name' },
-    { title: 'Category', dataIndex: 'category', key: 'category' },
-    { title: 'Last Sold', dataIndex: 'lastSoldAt', key: 'lastSold', render: (date) => date ? dayjs(date).format('DD/MM/YYYY') : 'Never' },
-    { title: 'Days Unsold', key: 'daysUnsold', render: (_, record) => {
-      const lastSold = record.lastSoldAt ? dayjs(record.lastSoldAt) : null;
-      const days = lastSold ? dayjs().diff(lastSold, 'day') : dayjs().diff(record.createdAt, 'day');
-      return <Text strong type={days > 7 ? 'danger' : 'warning'}>{days || 0} days</Text>;
-    }},
-    { title: 'Recommendation', key: 'recommendation', render: (_, record) => (
-      <Tag color="purple">🚀 Advertise/Promote</Tag>
-    )},
-  ];
-
-  // Expense columns
-  const expenseColumns = [
-    { title: 'Date', dataIndex: 'date', key: 'date', render: (date) => date ? dayjs(date).format('DD/MM/YYYY') : 'N/A' },
-    { title: 'Category', dataIndex: 'category', key: 'category', render: (category) => <Tag>{category || 'General'}</Tag> },
-    { title: 'Amount', dataIndex: 'amount', key: 'amount', render: (amount) => `KES ${(amount || 0).toLocaleString()}` },
-    { title: 'Description', dataIndex: 'description', key: 'description' },
-  ];
-
-  // Transaction columns
-  const transactionColumns = [
-    { title: 'Date', dataIndex: 'saleDate', key: 'date', render: (date) => date ? dayjs(date).format('DD/MM/YYYY') : 'N/A' },
-    { title: 'Customer', dataIndex: 'customerName', key: 'customer', render: (name) => name || 'Walk-in' },
-    { title: 'Items', dataIndex: 'itemsCount', key: 'items' },
-    { title: 'Amount', dataIndex: 'totalAmount', key: 'amount', render: (amount) => `KES ${(amount || 0).toLocaleString()}` },
-    { title: 'Payment', dataIndex: 'paymentMethod', key: 'payment', render: (method) => <Tag color={method === 'cash' ? 'green' : 'blue'}>{method?.toUpperCase() || 'UNKNOWN'}</Tag> },
-  ];
-
-  if (loading) {
-    return (
-      <Layout style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#0F172A' }}>
-        <Spin size="large" tip="Loading dashboard..." />
-      </Layout>
-    );
-  }
+  // Check if we're on a sub-page (not dashboard)
+  const isSubPage = location.pathname !== '/manager/dashboard' && location.pathname !== '/manager';
 
   return (
     <Layout style={{ minHeight: '100vh', background: '#0F172A' }}>
-      <Header style={{ 
-        background: '#1E293B',
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        padding: '0 24px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 1000
-      }}>
-        <Title level={4} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
-          PAMELA - MANAGER
-        </Title>
-        <Space>
-          <Button 
-            type={filters.autoRefresh ? "primary" : "default"}
-            icon={<ReloadOutlined spin={filters.autoRefresh} />}
-            onClick={() => handleFilterChange('autoRefresh', !filters.autoRefresh)}
-            size="small"
-            style={{ background: filters.autoRefresh ? '#52c41a' : undefined }}
-          >
-            Auto
-          </Button>
-          
-          <Button 
-            icon={<ReloadOutlined spin={refreshing} />} 
-            onClick={quickRefresh}
-            disabled={refreshing}
-            size="small"
-          >
-            Refresh
-          </Button>
-          
-          <Button 
-            icon={<FilterOutlined />}
-            onClick={() => setFilterVisible(!filterVisible)}
-            size="small"
-          >
-            Filters
-          </Button>
-          
-          <Button 
-            icon={<ExportOutlined />} 
-            onClick={() => message.info('Export coming soon')}
-            size="small"
-          >
-            Export
-          </Button>
-          
-          <Button 
-            icon={<LogoutOutlined />} 
-            onClick={handleLogout} 
-            danger
-            size="small"
-          >
-            Logout
-          </Button>
-        </Space>
-      </Header>
+      <Sider 
+        collapsible 
+        collapsed={collapsed} 
+        onCollapse={setCollapsed}
+        breakpoint="lg"
+        collapsedWidth="80"
+        style={{ 
+          background: '#1E293B',
+          boxShadow: '2px 0 8px rgba(0,0,0,0.3)'
+        }}
+      >
+        <div style={{ 
+          padding: '16px 0', 
+          textAlign: 'center', 
+          borderBottom: '1px solid rgba(255,255,255,0.1)' 
+        }}>
+          <Title level={4} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
+            {collapsed ? 'MP' : 'PAMELA'}
+          </Title>
+        </div>
+        <Menu 
+          theme="dark" 
+          selectedKeys={[getSelectedKey()]}
+          mode="inline"
+          items={menuItems}
+          style={{ background: 'transparent', border: 'none' }}
+          onClick={handleMenuClick}
+        />
+      </Sider>
 
-      <Content style={{ padding: '24px', background: '#0F172A' }}>
-        {/* Filters Panel */}
-        {filterVisible && (
-          <Card 
-            size="small" 
-            style={{ 
-              marginBottom: 16, 
-              border: '1px solid #2D3748', 
-              borderRadius: '8px',
-              background: '#1A2332'
-            }}
-            title={
-              <Space>
-                <FilterOutlined style={{ color: '#6366F1' }} />
-                <Text strong style={{ color: 'white' }}>Dashboard Filters</Text>
-              </Space>
-            }
-            extra={
-              <Button size="small" onClick={() => {
-                setFilters({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
-                fetchDashboardData({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
-              }}>
-                Clear Filters
+      <Layout className="site-layout">
+        <Header style={{ 
+          background: '#1E293B',
+          padding: '0 24px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          height: 64,
+          position: 'sticky',
+          top: 0,
+          zIndex: 1000
+        }}>
+          <Title level={4} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
+            {isSubPage ? (
+              <span>
+                PAMELA - {location.pathname.split('/').pop().charAt(0).toUpperCase() + location.pathname.split('/').pop().slice(1).replace('-', ' ')}
+              </span>
+            ) : (
+              'PAMELA - MANAGER'
+            )}
+          </Title>
+          <Space>
+            {/* Only show dashboard controls on dashboard page */}
+            {!isSubPage && (
+              <>
+                <Button 
+                  type={filters.autoRefresh ? "primary" : "default"}
+                  icon={<ReloadOutlined spin={filters.autoRefresh} />}
+                  onClick={() => handleFilterChange('autoRefresh', !filters.autoRefresh)}
+                  size="small"
+                  style={{ background: filters.autoRefresh ? '#52c41a' : undefined }}
+                >
+                  Auto
+                </Button>
+                
+                <Button 
+                  icon={<ReloadOutlined spin={refreshing} />} 
+                  onClick={quickRefresh}
+                  disabled={refreshing}
+                  size="small"
+                >
+                  Refresh
+                </Button>
+                
+                <Button 
+                  icon={<FilterOutlined />}
+                  onClick={() => setFilterVisible(!filterVisible)}
+                  size="small"
+                >
+                  Filters
+                </Button>
+              </>
+            )}
+            
+            <Button 
+              icon={<ExportOutlined />} 
+              onClick={() => message.info('Export coming soon')}
+              size="small"
+            >
+              Export
+            </Button>
+            
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+              <Button type="text" style={{ color: 'white' }}>
+                <Space>
+                  <UserOutlined />
+                  Manager
+                </Space>
               </Button>
-            }
-          >
-            <Row gutter={[12, 12]} align="middle">
-              <Col xs={24} sm={12} md={8}>
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Date Range</Text>
-                  <RangePicker
-                    style={{ width: '100%' }}
-                    value={filters.dateRange}
-                    onChange={(dates) => handleFilterChange('dateRange', dates)}
-                    format="YYYY-MM-DD"
-                  />
-                </Space>
-              </Col>
-              <Col xs={24} sm={12} md={8}>
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Shop</Text>
-                  <Select
-                    style={{ width: '100%' }}
-                    value={filters.shop}
-                    onChange={(value) => handleFilterChange('shop', value)}
-                    placeholder="Select Shop"
-                  >
-                    <Option value="all">All Shops</Option>
-                    {shops.map(shop => (
-                      <Option key={shop._id} value={shop._id}>
-                        {shop.name}
-                      </Option>
-                    ))}
-                  </Select>
-                </Space>
-              </Col>
-              <Col xs={24} sm={12} md={8}>
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Auto Refresh</Text>
-                  <div>
-                    <Switch
-                      checked={filters.autoRefresh}
-                      onChange={(checked) => handleFilterChange('autoRefresh', checked)}
-                      checkedChildren="ON"
-                      unCheckedChildren="OFF"
-                    />
-                    <Text style={{ color: 'rgba(255,255,255,0.5)', marginLeft: 8, fontSize: '12px' }}>
-                      Refresh every 30s
-                    </Text>
-                  </div>
-                </Space>
-              </Col>
-            </Row>
-          </Card>
-        )}
-
-        {/* Data Timestamp */}
-        <Row style={{ marginBottom: 16 }} justify="space-between" align="middle">
-          <Col>
-            {dataTimestamp && (
-              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
-                Last updated: {new Date(dataTimestamp).toLocaleString()}
-                {filters.autoRefresh && (
-                  <Tag color="green" style={{ marginLeft: 8 }}>Auto-refresh ON</Tag>
-                )}
-              </Text>
-            )}
-          </Col>
-        </Row>
-
-        {/* ENHANCED FINANCIAL OVERVIEW - Like AdminDashboard */}
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col span={24}>
-            <Card 
-              title={
-                <Space>
-                  <LineChartOutlined style={{ color: '#6366F1', fontSize: '18px' }} />
-                  <Text strong style={{ fontSize: '16px', color: 'white' }}>Financial Overview</Text>
-                  <Tag color="blue" style={{ marginLeft: 8 }}>COGS: {formatCurrency(dashboardData.financialStats.costOfGoodsSold)}</Tag>
-                </Space>
-              }
-              style={{ 
-                borderRadius: '12px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                border: '1px solid #2D3748',
-                background: '#1A2332'
-              }}
-              bodyStyle={{ padding: '16px' }}
+            </Dropdown>
+            
+            <Button 
+              type="primary" 
+              danger 
+              icon={<LogoutOutlined />}
+              onClick={handleLogout}
+              size="small"
             >
-              {/* Row 1: Core Revenue Metrics */}
-              <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
-                <Col span={24}>
-                  <Divider orientation="left" style={{ color: '#6366F1', fontSize: '12px', margin: '4px 0' }}>
-                    <Text strong style={{ color: '#6366F1' }}>Revenue & Sales</Text>
-                  </Divider>
-                </Col>
-                <FinancialStatCard 
-                  title="Total Revenue" 
-                  value={dashboardData.financialStats.totalRevenue || 0}
-                  icon={<DollarOutlined />}
-                  description="All sales including credit"
-                />
-                <FinancialStatCard 
-                  title="Total Sales" 
-                  value={dashboardData.financialStats.totalSales || 0}
-                  icon={<ShoppingCartOutlined />}
-                  type="number"
-                  description="Number of transactions"
-                />
-                <FinancialStatCard 
-                  title="Total Transactions" 
-                  value={dashboardData.financialStats.totalTransactions || 0}
-                  icon={<BarChartOutlined />}
-                  type="number"
-                  description="Sales count"
-                />
-                <FinancialStatCard 
-                  title="Avg Transaction" 
-                  value={dashboardData.financialStats.averageTransactionValue || 0}
-                  icon={<CalculatorOutlined />}
-                  description="Revenue per sale"
-                />
-              </Row>
-
-              {/* Row 2: Cost & Profit Metrics */}
-              <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
-                <Col span={24}>
-                  <Divider orientation="left" style={{ color: '#52c41a', fontSize: '12px', margin: '4px 0' }}>
-                    <Text strong style={{ color: '#52c41a' }}>Cost & Profit</Text>
-                  </Divider>
-                </Col>
-                <FinancialStatCard 
-                  title="Cost of Goods Sold" 
-                  value={dashboardData.financialStats.costOfGoodsSold || 0}
-                  icon={<StockOutlined />}
-                  color="#faad14"
-                  description="Direct inventory cost"
-                />
-                <FinancialStatCard 
-                  title="Gross Profit" 
-                  value={dashboardData.financialStats.grossProfit || 0}
-                  icon={<RiseOutlined />}
-                  color="#52c41a"
-                  type="profit"
-                  description="Revenue - COGS"
-                />
-                <FinancialStatCard 
-                  title="Total Expenses" 
-                  value={dashboardData.financialStats.totalExpenses || 0}
-                  icon={<WalletOutlined />}
-                  color="#ff4d4f"
-                  description="Operating costs"
-                />
-                <FinancialStatCard 
-                  title="Net Profit" 
-                  value={dashboardData.financialStats.netProfit || 0}
-                  icon={<RiseOutlined />}
-                  color={dashboardData.financialStats.netProfit >= 0 ? '#52c41a' : '#ff4d4f'}
-                  type="profit"
-                  description="After all expenses"
-                />
-              </Row>
-
-              {/* Row 3: Profitability Ratios */}
-              <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
-                <Col span={24}>
-                  <Divider orientation="left" style={{ color: '#13c2c2', fontSize: '12px', margin: '4px 0' }}>
-                    <Text strong style={{ color: '#13c2c2' }}>Profitability Ratios</Text>
-                  </Divider>
-                </Col>
-                <FinancialStatCard 
-                  title="Profit Margin" 
-                  value={dashboardData.financialStats.profitMargin || 0}
-                  icon={<PercentageOutlined />}
-                  type="percentage"
-                  color="#13c2c2"
-                  description="Net profit percentage"
-                />
-                <FinancialStatCard 
-                  title="Gross Margin" 
-                  value={dashboardData.financialStats.grossProfitMargin || 0}
-                  icon={<PercentageOutlined />}
-                  type="percentage"
-                  color="#52c41a"
-                  description="Gross profit percentage"
-                />
-                <FinancialStatCard 
-                  title="Credit Collection" 
-                  value={dashboardData.financialStats.creditCollectionRate || 0}
-                  icon={<PercentageOutlined />}
-                  type="percentage"
-                  color="#faad14"
-                  description="Credit recovery rate"
-                />
-                <FinancialStatCard 
-                  title="Items Sold" 
-                  value={dashboardData.financialStats.totalItemsSold || 0}
-                  icon={<ProductOutlined />}
-                  type="number"
-                  color="#1890ff"
-                  description="Total quantity sold"
-                />
-              </Row>
-
-              {/* Row 4: Payment & Credit Breakdown */}
-              <Row gutter={[16, 16]}>
-                <Col span={24}>
-                  <Divider orientation="left" style={{ color: '#9b59b6', fontSize: '12px', margin: '4px 0' }}>
-                    <Text strong style={{ color: '#9b59b6' }}>Payment & Credit Breakdown</Text>
-                  </Divider>
-                </Col>
-                <FinancialStatCard 
-                  title="Cash Collected" 
-                  value={dashboardData.financialStats.totalCash || 0}
-                  icon={<DollarOutlined />}
-                  color="#52c41a"
-                  description="Cash payments"
-                />
-                <FinancialStatCard 
-                  title="Bank/M-Pesa" 
-                  value={dashboardData.financialStats.totalMpesaBank || 0}
-                  icon={<CreditCardOutlined />}
-                  color="#1890ff"
-                  description="Digital payments"
-                />
-                <FinancialStatCard 
-                  title="Total Credit Given" 
-                  value={dashboardData.financialStats.totalCreditGiven || 0}
-                  icon={<CreditCardOutlined />}
-                  color="#faad14"
-                  description="Credit extended"
-                />
-                <FinancialStatCard 
-                  title="Recognized Credit" 
-                  value={dashboardData.financialStats.recognizedCreditRevenue || 0}
-                  icon={<CheckCircleOutlined />}
-                  color="#52c41a"
-                  description="Credit collected"
-                />
-                <FinancialStatCard 
-                  title="Outstanding Credit" 
-                  value={dashboardData.financialStats.outstandingCredit || 0}
-                  icon={<WarningOutlined />}
-                  color="#ff4d4f"
-                  description="Unpaid balance"
-                />
-                <FinancialStatCard 
-                  title="Credit Sales" 
-                  value={dashboardData.financialStats.creditSales || 0}
-                  icon={<CreditCardOutlined />}
-                  color="#faad14"
-                  description="Credit transactions"
-                />
-              </Row>
-
-              {/* Summary Bar */}
-              <div style={{ 
-                marginTop: 16, 
-                padding: '12px 16px', 
-                background: 'rgba(99, 102, 241, 0.1)', 
-                borderRadius: '6px',
-                border: '1px solid rgba(99, 102, 241, 0.2)'
-              }}>
-                <Row gutter={[16, 16]} align="middle">
-                  <Col xs={24} sm={12}>
+              Logout
+            </Button>
+          </Space>
+        </Header>
+        
+        <Content style={{ margin: '16px', padding: 16, background: '#0F172A', minHeight: 'calc(100vh - 112px)' }}>
+          {/* Render child routes or dashboard content */}
+          {isSubPage ? (
+            <Outlet />
+          ) : (
+            <>
+              {/* Filters Panel */}
+              {filterVisible && (
+                <Card 
+                  size="small" 
+                  style={{ 
+                    marginBottom: 16, 
+                    border: '1px solid #2D3748', 
+                    borderRadius: '8px',
+                    background: '#1A2332'
+                  }}
+                  title={
                     <Space>
-                      <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Summary:</Text>
-                      <Tag color="green">Revenue: {formatCurrency(dashboardData.financialStats.totalRevenue)}</Tag>
-                      <Tag color="orange">COGS: {formatCurrency(dashboardData.financialStats.costOfGoodsSold)}</Tag>
-                      <Tag color="blue">Gross Profit: {formatCurrency(dashboardData.financialStats.grossProfit)}</Tag>
-                      <Tag color={dashboardData.financialStats.netProfit >= 0 ? 'green' : 'red'}>
-                        Net Profit: {formatCurrency(dashboardData.financialStats.netProfit)}
-                      </Tag>
+                      <FilterOutlined style={{ color: '#6366F1' }} />
+                      <Text strong style={{ color: 'white' }}>Dashboard Filters</Text>
                     </Space>
-                  </Col>
-                  <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
-                    <Space>
-                      <Tag color="purple">Margin: {formatPercentage(dashboardData.financialStats.profitMargin)}</Tag>
-                      <Tag color="cyan">Gross Margin: {formatPercentage(dashboardData.financialStats.grossProfitMargin)}</Tag>
-                      {dashboardData.financialStats.outstandingCredit > 0 && (
-                        <Tag color="red">⚠️ Outstanding: {formatCurrency(dashboardData.financialStats.outstandingCredit)}</Tag>
+                  }
+                  extra={
+                    <Button size="small" onClick={() => {
+                      setFilters({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
+                      fetchDashboardData({ dateRange: null, shop: 'all', autoRefresh: filters.autoRefresh });
+                    }}>
+                      Clear Filters
+                    </Button>
+                  }
+                >
+                  <Row gutter={[12, 12]} align="middle">
+                    <Col xs={24} sm={12} md={8}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Date Range</Text>
+                        <RangePicker
+                          style={{ width: '100%' }}
+                          value={filters.dateRange}
+                          onChange={(dates) => handleFilterChange('dateRange', dates)}
+                          format="YYYY-MM-DD"
+                        />
+                      </Space>
+                    </Col>
+                    <Col xs={24} sm={12} md={8}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Shop</Text>
+                        <Select
+                          style={{ width: '100%' }}
+                          value={filters.shop}
+                          onChange={(value) => handleFilterChange('shop', value)}
+                          placeholder="Select Shop"
+                        >
+                          <Option value="all">All Shops</Option>
+                          {shops.map(shop => (
+                            <Option key={shop._id} value={shop._id}>
+                              {shop.name}
+                            </Option>
+                          ))}
+                        </Select>
+                      </Space>
+                    </Col>
+                    <Col xs={24} sm={12} md={8}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Auto Refresh</Text>
+                        <div>
+                          <Switch
+                            checked={filters.autoRefresh}
+                            onChange={(checked) => handleFilterChange('autoRefresh', checked)}
+                            checkedChildren="ON"
+                            unCheckedChildren="OFF"
+                          />
+                          <Text style={{ color: 'rgba(255,255,255,0.5)', marginLeft: 8, fontSize: '12px' }}>
+                            Refresh every 30s
+                          </Text>
+                        </div>
+                      </Space>
+                    </Col>
+                  </Row>
+                </Card>
+              )}
+
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '50px' }}>
+                  <Spin size="large" />
+                  <div style={{ marginTop: 16, color: 'rgba(255,255,255,0.7)' }}>Loading dashboard data...</div>
+                </div>
+              ) : (
+                <>
+                  {/* Data Timestamp */}
+                  <Row style={{ marginBottom: 16 }} justify="space-between" align="middle">
+                    <Col>
+                      {dataTimestamp && (
+                        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
+                          Last updated: {new Date(dataTimestamp).toLocaleString()}
+                          {filters.autoRefresh && (
+                            <Tag color="green" style={{ marginLeft: 8 }}>Auto-refresh ON</Tag>
+                          )}
+                        </Text>
                       )}
-                    </Space>
-                  </Col>
-                </Row>
-              </div>
-            </Card>
-          </Col>
-        </Row>
+                    </Col>
+                  </Row>
 
-        {/* Alerts Section */}
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col span={24}>
-            {dashboardData.businessStats.lowStockCount > 0 && (
-              <Alert
-                message={`${dashboardData.businessStats.lowStockCount} products are low on stock`}
-                description="Some products need to be reordered to avoid stockouts."
-                type="warning"
-                showIcon
-                action={
-                  <Button size="small" type="primary" onClick={() => navigate('/manager/inventory')}>
-                    View Inventory
-                  </Button>
-                }
-                style={{ marginBottom: 8, borderRadius: '8px' }}
-              />
-            )}
-            {dashboardData.financialStats.outstandingCredit > 0 && (
-              <Alert
-                message={`Outstanding credit: ${formatCurrency(dashboardData.financialStats.outstandingCredit)}`}
-                description="Monitor credit collection and follow up with customers."
-                type="info"
-                showIcon
-                action={
-                  <Button size="small" type="primary" onClick={() => navigate('/manager/credits')}>
-                    View Credits
-                  </Button>
-                }
-                style={{ marginBottom: 8, borderRadius: '8px' }}
-              />
-            )}
-          </Col>
-        </Row>
+                  {/* ENHANCED FINANCIAL OVERVIEW */}
+                  <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                    <Col span={24}>
+                      <Card 
+                        title={
+                          <Space>
+                            <LineChartOutlined style={{ color: '#6366F1', fontSize: '18px' }} />
+                            <Text strong style={{ fontSize: '16px', color: 'white' }}>Financial Overview</Text>
+                            <Tag color="blue" style={{ marginLeft: 8 }}>COGS: {formatCurrency(dashboardData.financialStats.costOfGoodsSold)}</Tag>
+                          </Space>
+                        }
+                        style={{ 
+                          borderRadius: '12px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
+                        bodyStyle={{ padding: '16px' }}
+                      >
+                        {/* Row 1: Core Revenue Metrics */}
+                        <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
+                          <Col span={24}>
+                            <Divider orientation="left" style={{ color: '#6366F1', fontSize: '12px', margin: '4px 0' }}>
+                              <Text strong style={{ color: '#6366F1' }}>Revenue & Sales</Text>
+                            </Divider>
+                          </Col>
+                          <FinancialStatCard 
+                            title="Total Revenue" 
+                            value={dashboardData.financialStats.totalRevenue || 0}
+                            icon={<DollarOutlined />}
+                            description="All sales including credit"
+                          />
+                          <FinancialStatCard 
+                            title="Total Sales" 
+                            value={dashboardData.financialStats.totalSales || 0}
+                            icon={<ShoppingCartOutlined />}
+                            type="number"
+                            description="Number of transactions"
+                          />
+                          <FinancialStatCard 
+                            title="Total Transactions" 
+                            value={dashboardData.financialStats.totalTransactions || 0}
+                            icon={<BarChartOutlined />}
+                            type="number"
+                            description="Sales count"
+                          />
+                          <FinancialStatCard 
+                            title="Avg Transaction" 
+                            value={dashboardData.financialStats.averageTransactionValue || 0}
+                            icon={<CalculatorOutlined />}
+                            description="Revenue per sale"
+                          />
+                        </Row>
 
-        {/* Main Content Grid - Recent Transactions and Low Stock */}
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={12}>
-            <Card 
-              title={
-                <Space>
-                  <ShoppingCartOutlined style={{ color: '#6366F1' }} />
-                  <Text strong style={{ color: 'white' }}>Recent Transactions</Text>
-                  <Badge count={dashboardData.recentTransactions.length} showZero />
-                </Space>
-              }
-              extra={
-                <Space>
-                  <Search
-                    placeholder="Search..."
-                    size="small"
-                    style={{ width: 120 }}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    allowClear
-                  />
-                  <Button 
-                    size="small" 
-                    type="primary" 
-                    onClick={() => navigate('/manager/transactions')}
-                  >
-                    View All
-                  </Button>
-                </Space>
-              }
-              style={{ 
-                borderRadius: '12px', 
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                border: '1px solid #2D3748',
-                background: '#1A2332'
-              }}
-            >
-              <Table 
-                dataSource={dashboardData.recentTransactions} 
-                columns={transactionColumns} 
-                pagination={{ pageSize: 5, size: 'small' }}
-                size="small"
-                rowKey={(record) => record._id || record.id || `txn-${Math.random()}`}
-                locale={{ emptyText: 'No recent transactions' }}
-              />
-            </Card>
-          </Col>
+                        {/* Row 2: Cost & Profit Metrics */}
+                        <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
+                          <Col span={24}>
+                            <Divider orientation="left" style={{ color: '#52c41a', fontSize: '12px', margin: '4px 0' }}>
+                              <Text strong style={{ color: '#52c41a' }}>Cost & Profit</Text>
+                            </Divider>
+                          </Col>
+                          <FinancialStatCard 
+                            title="Cost of Goods Sold" 
+                            value={dashboardData.financialStats.costOfGoodsSold || 0}
+                            icon={<StockOutlined />}
+                            color="#faad14"
+                            description="Direct inventory cost"
+                          />
+                          <FinancialStatCard 
+                            title="Gross Profit" 
+                            value={dashboardData.financialStats.grossProfit || 0}
+                            icon={<RiseOutlined />}
+                            color="#52c41a"
+                            type="profit"
+                            description="Revenue - COGS"
+                          />
+                          <FinancialStatCard 
+                            title="Total Expenses" 
+                            value={dashboardData.financialStats.totalExpenses || 0}
+                            icon={<WalletOutlined />}
+                            color="#ff4d4f"
+                            description="Operating costs"
+                          />
+                          <FinancialStatCard 
+                            title="Net Profit" 
+                            value={dashboardData.financialStats.netProfit || 0}
+                            icon={<RiseOutlined />}
+                            color={dashboardData.financialStats.netProfit >= 0 ? '#52c41a' : '#ff4d4f'}
+                            type="profit"
+                            description="After all expenses"
+                          />
+                        </Row>
 
-          <Col xs={24} lg={12}>
-            <Card 
-              title={
-                <Space>
-                  <WarningOutlined style={{ color: '#ff4d4f' }} />
-                  <Text strong style={{ color: 'white' }}>Low Stock Products</Text>
-                  <Badge 
-                    count={dashboardData.lowStockProducts.length} 
-                    showZero 
-                    style={{ backgroundColor: '#ff4d4f' }} 
-                  />
-                </Space>
-              }
-              extra={
-                <Button 
-                  size="small" 
-                  onClick={() => navigate('/manager/inventory')}
-                >
-                  Manage
-                </Button>
-              }
-              style={{ 
-                borderRadius: '12px', 
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                border: '1px solid #2D3748',
-                background: '#1A2332'
-              }}
-            >
-              <Table 
-                dataSource={dashboardData.lowStockProducts} 
-                columns={stockColumns} 
-                pagination={false}
-                size="small"
-                rowKey={(record) => record._id || record.id || `prod-${Math.random()}`}
-                locale={{ emptyText: 'All products well stocked' }}
-              />
-            </Card>
-          </Col>
+                        {/* Row 3: Profitability Ratios */}
+                        <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
+                          <Col span={24}>
+                            <Divider orientation="left" style={{ color: '#13c2c2', fontSize: '12px', margin: '4px 0' }}>
+                              <Text strong style={{ color: '#13c2c2' }}>Profitability Ratios</Text>
+                            </Divider>
+                          </Col>
+                          <FinancialStatCard 
+                            title="Profit Margin" 
+                            value={dashboardData.financialStats.profitMargin || 0}
+                            icon={<PercentageOutlined />}
+                            type="percentage"
+                            color="#13c2c2"
+                            description="Net profit percentage"
+                          />
+                          <FinancialStatCard 
+                            title="Gross Margin" 
+                            value={dashboardData.financialStats.grossProfitMargin || 0}
+                            icon={<PercentageOutlined />}
+                            type="percentage"
+                            color="#52c41a"
+                            description="Gross profit percentage"
+                          />
+                          <FinancialStatCard 
+                            title="Credit Collection" 
+                            value={dashboardData.financialStats.creditCollectionRate || 0}
+                            icon={<PercentageOutlined />}
+                            type="percentage"
+                            color="#faad14"
+                            description="Credit recovery rate"
+                          />
+                          <FinancialStatCard 
+                            title="Items Sold" 
+                            value={dashboardData.financialStats.totalItemsSold || 0}
+                            icon={<ProductOutlined />}
+                            type="number"
+                            color="#1890ff"
+                            description="Total quantity sold"
+                          />
+                        </Row>
 
-          <Col xs={24} lg={12}>
-            <Card 
-              title={
-                <Space>
-                  <ProductOutlined style={{ color: '#52c41a' }} />
-                  <Text strong style={{ color: 'white' }}>Top Selling Products</Text>
-                </Space>
-              }
-              extra={
-                <Button 
-                  size="small" 
-                  type="primary" 
-                  onClick={() => navigate('/manager/products')}
-                >
-                  View All
-                </Button>
-              }
-              style={{ 
-                borderRadius: '12px', 
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                border: '1px solid #2D3748',
-                background: '#1A2332'
-              }}
-            >
-              <List
-                dataSource={dashboardData.topProducts}
-                renderItem={(item, index) => (
-                  <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
-                    <List.Item.Meta
-                      avatar={
-                        <Avatar 
-                          size="small" 
-                          style={{ 
-                            backgroundColor: index < 3 ? '#6366F1' : '#4A5568',
-                            fontSize: '10px',
-                            fontWeight: 'bold',
-                            color: 'white'
-                          }}
-                        >
-                          {index + 1}
-                        </Avatar>
-                      }
-                      title={
-                        <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
-                          {item.name || 'Unknown Product'}
-                        </Text>
-                      }
-                      description={
-                        <Space direction="vertical" size={0}>
-                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                            Sold: {item.totalSold || 0} units
-                          </Text>
-                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                            Revenue: {formatCurrency(item.totalRevenue || 0)}
-                          </Text>
-                        </Space>
-                      }
-                    />
-                  </List.Item>
-                )}
-                locale={{ emptyText: 'No product sales data' }}
-              />
-            </Card>
-          </Col>
+                        {/* Row 4: Payment & Credit Breakdown */}
+                        <Row gutter={[16, 16]}>
+                          <Col span={24}>
+                            <Divider orientation="left" style={{ color: '#9b59b6', fontSize: '12px', margin: '4px 0' }}>
+                              <Text strong style={{ color: '#9b59b6' }}>Payment & Credit Breakdown</Text>
+                            </Divider>
+                          </Col>
+                          <FinancialStatCard 
+                            title="Cash Collected" 
+                            value={dashboardData.financialStats.totalCash || 0}
+                            icon={<DollarOutlined />}
+                            color="#52c41a"
+                            description="Cash payments"
+                          />
+                          <FinancialStatCard 
+                            title="Bank/M-Pesa" 
+                            value={dashboardData.financialStats.totalMpesaBank || 0}
+                            icon={<CreditCardOutlined />}
+                            color="#1890ff"
+                            description="Digital payments"
+                          />
+                          <FinancialStatCard 
+                            title="Total Credit Given" 
+                            value={dashboardData.financialStats.totalCreditGiven || 0}
+                            icon={<CreditCardOutlined />}
+                            color="#faad14"
+                            description="Credit extended"
+                          />
+                          <FinancialStatCard 
+                            title="Recognized Credit" 
+                            value={dashboardData.financialStats.recognizedCreditRevenue || 0}
+                            icon={<CheckCircleOutlined />}
+                            color="#52c41a"
+                            description="Credit collected"
+                          />
+                          <FinancialStatCard 
+                            title="Outstanding Credit" 
+                            value={dashboardData.financialStats.outstandingCredit || 0}
+                            icon={<WarningOutlined />}
+                            color="#ff4d4f"
+                            description="Unpaid balance"
+                          />
+                          <FinancialStatCard 
+                            title="Credit Sales" 
+                            value={dashboardData.financialStats.creditSales || 0}
+                            icon={<CreditCardOutlined />}
+                            color="#faad14"
+                            description="Credit transactions"
+                          />
+                        </Row>
 
-          <Col xs={24} lg={12}>
-            <Card 
-              title={
-                <Space>
-                  <ShopOutlined style={{ color: '#9b59b6' }} />
-                  <Text strong style={{ color: 'white' }}>Shop Performance</Text>
-                </Space>
-              }
-              extra={
-                <Button 
-                  size="small" 
-                  type="primary" 
-                  onClick={() => navigate('/manager/shops')}
-                >
-                  View All
-                </Button>
-              }
-              style={{ 
-                borderRadius: '12px', 
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                border: '1px solid #2D3748',
-                background: '#1A2332'
-              }}
-            >
-              <List
-                dataSource={dashboardData.shopPerformance}
-                renderItem={(item) => (
-                  <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
-                    <List.Item.Meta
-                      avatar={
-                        <Avatar 
-                          size="small" 
-                          style={{ 
-                            backgroundColor: '#9b59b6',
-                            fontSize: '10px',
-                            fontWeight: 'bold',
-                            color: 'white'
-                          }}
-                        >
-                          {item.name?.charAt(0)?.toUpperCase() || 'S'}
-                        </Avatar>
-                      }
-                      title={
-                        <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
-                          {item.name || 'Unknown Shop'}
-                        </Text>
-                      }
-                      description={
-                        <Space direction="vertical" size={0}>
-                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                            Transactions: {item.transactions || 0}
-                          </Text>
-                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
-                            Revenue: {formatCurrency(item.revenue || 0)}
-                          </Text>
-                        </Space>
-                      }
-                    />
-                  </List.Item>
-                )}
-                locale={{ emptyText: 'No shop performance data' }}
-              />
-            </Card>
-          </Col>
-        </Row>
+                        {/* Summary Bar */}
+                        <div style={{ 
+                          marginTop: 16, 
+                          padding: '12px 16px', 
+                          background: 'rgba(99, 102, 241, 0.1)', 
+                          borderRadius: '6px',
+                          border: '1px solid rgba(99, 102, 241, 0.2)'
+                        }}>
+                          <Row gutter={[16, 16]} align="middle">
+                            <Col xs={24} sm={12}>
+                              <Space>
+                                <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Summary:</Text>
+                                <Tag color="green">Revenue: {formatCurrency(dashboardData.financialStats.totalRevenue)}</Tag>
+                                <Tag color="orange">COGS: {formatCurrency(dashboardData.financialStats.costOfGoodsSold)}</Tag>
+                                <Tag color="blue">Gross Profit: {formatCurrency(dashboardData.financialStats.grossProfit)}</Tag>
+                                <Tag color={dashboardData.financialStats.netProfit >= 0 ? 'green' : 'red'}>
+                                  Net Profit: {formatCurrency(dashboardData.financialStats.netProfit)}
+                                </Tag>
+                              </Space>
+                            </Col>
+                            <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
+                              <Space>
+                                <Tag color="purple">Margin: {formatPercentage(dashboardData.financialStats.profitMargin)}</Tag>
+                                <Tag color="cyan">Gross Margin: {formatPercentage(dashboardData.financialStats.grossProfitMargin)}</Tag>
+                                {dashboardData.financialStats.outstandingCredit > 0 && (
+                                  <Tag color="red">⚠️ Outstanding: {formatCurrency(dashboardData.financialStats.outstandingCredit)}</Tag>
+                                )}
+                              </Space>
+                            </Col>
+                          </Row>
+                        </div>
+                      </Card>
+                    </Col>
+                  </Row>
 
-        {/* Tabs for additional views (Stock Alerts, Dead Stock, Expenses) */}
-        <Tabs 
-          activeKey={activeTab} 
-          onChange={setActiveTab}
-          style={{ marginTop: 24 }}
-          tabBarStyle={{ borderBottom: '1px solid #2D3748' }}
-        >
-          {/* Dead Stock Tab */}
-          <TabPane 
-            tab={<span style={{ color: 'white' }}><InfoCircleOutlined /> Dead Stock <Badge count={dashboardData.lowStockProducts.filter(p => {
-              const lastSold = p.lastSoldAt ? dayjs(p.lastSoldAt) : null;
-              return !lastSold || lastSold.isBefore(dayjs().subtract(30, 'days'));
-            }).length} /></span>} 
-            key="deadStock"
-          >
-            <Card 
-              title="Dead Stock Recommendations"
-              style={{ 
-                borderRadius: '12px',
-                border: '1px solid #2D3748',
-                background: '#1A2332'
-              }}
-            >
-              <Alert 
-                message={`Products not sold in ${CONFIG.STOCK_ALERTS.DEAD_STOCK_DAYS || 30} days should be promoted or advertised.`} 
-                type="info" 
-                showIcon 
-                style={{ marginBottom: 16 }} 
-              />
-              {dashboardData.lowStockProducts.filter(p => {
-                const lastSold = p.lastSoldAt ? dayjs(p.lastSoldAt) : null;
-                return !lastSold || lastSold.isBefore(dayjs().subtract(30, 'days'));
-              }).length > 0 ? (
-                <Table 
-                  columns={deadStockColumns} 
-                  dataSource={dashboardData.lowStockProducts.filter(p => {
-                    const lastSold = p.lastSoldAt ? dayjs(p.lastSoldAt) : null;
-                    return !lastSold || lastSold.isBefore(dayjs().subtract(30, 'days'));
-                  })} 
-                  rowKey="_id" 
-                  pagination={false}
-                />
-              ) : (
-                <Text style={{ color: 'rgba(255,255,255,0.7)' }}>No dead stock detected - all products are selling well!</Text>
+                  {/* Alerts Section */}
+                  <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                    <Col span={24}>
+                      {dashboardData.businessStats.lowStockCount > 0 && (
+                        <Alert
+                          message={`${dashboardData.businessStats.lowStockCount} products are low on stock`}
+                          description="Some products need to be reordered to avoid stockouts."
+                          type="warning"
+                          showIcon
+                          action={
+                            <Button size="small" type="primary" onClick={() => navigate('/manager/inventory')}>
+                              View Inventory
+                            </Button>
+                          }
+                          style={{ marginBottom: 8, borderRadius: '8px' }}
+                        />
+                      )}
+                      {dashboardData.financialStats.outstandingCredit > 0 && (
+                        <Alert
+                          message={`Outstanding credit: ${formatCurrency(dashboardData.financialStats.outstandingCredit)}`}
+                          description="Monitor credit collection and follow up with customers."
+                          type="info"
+                          showIcon
+                          action={
+                            <Button size="small" type="primary" onClick={() => navigate('/manager/credits')}>
+                              View Credits
+                            </Button>
+                          }
+                          style={{ marginBottom: 8, borderRadius: '8px' }}
+                        />
+                      )}
+                    </Col>
+                  </Row>
+
+                  {/* Main Content Grid */}
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} lg={12}>
+                      <Card 
+                        title={
+                          <Space>
+                            <ShoppingCartOutlined style={{ color: '#6366F1' }} />
+                            <Text strong style={{ color: 'white' }}>Recent Transactions</Text>
+                            <Badge count={dashboardData.recentTransactions.length} showZero />
+                          </Space>
+                        }
+                        extra={
+                          <Space>
+                            <Search
+                              placeholder="Search..."
+                              size="small"
+                              style={{ width: 120 }}
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              allowClear
+                            />
+                            <Button 
+                              size="small" 
+                              type="primary" 
+                              onClick={() => navigate('/manager/transactions')}
+                            >
+                              View All
+                            </Button>
+                          </Space>
+                        }
+                        style={{ 
+                          borderRadius: '12px', 
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
+                      >
+                        <Table 
+                          dataSource={dashboardData.recentTransactions} 
+                          columns={salesColumns} 
+                          pagination={{ pageSize: 5, size: 'small' }}
+                          size="small"
+                          rowKey={(record) => record._id || record.id || `txn-${Math.random()}`}
+                          locale={{ emptyText: 'No recent transactions' }}
+                        />
+                      </Card>
+                    </Col>
+
+                    <Col xs={24} lg={12}>
+                      <Card 
+                        title={
+                          <Space>
+                            <WarningOutlined style={{ color: '#ff4d4f' }} />
+                            <Text strong style={{ color: 'white' }}>Low Stock Products</Text>
+                            <Badge 
+                              count={dashboardData.lowStockProducts.length} 
+                              showZero 
+                              style={{ backgroundColor: '#ff4d4f' }} 
+                            />
+                          </Space>
+                        }
+                        extra={
+                          <Button 
+                            size="small" 
+                            onClick={() => navigate('/manager/inventory')}
+                          >
+                            Manage
+                          </Button>
+                        }
+                        style={{ 
+                          borderRadius: '12px', 
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
+                      >
+                        <Table 
+                          dataSource={dashboardData.lowStockProducts} 
+                          columns={lowStockColumns} 
+                          pagination={false}
+                          size="small"
+                          rowKey={(record) => record._id || record.id || `prod-${Math.random()}`}
+                          locale={{ emptyText: 'All products well stocked' }}
+                        />
+                      </Card>
+                    </Col>
+
+                    <Col xs={24} lg={12}>
+                      <Card 
+                        title={
+                          <Space>
+                            <ProductOutlined style={{ color: '#52c41a' }} />
+                            <Text strong style={{ color: 'white' }}>Top Selling Products</Text>
+                          </Space>
+                        }
+                        extra={
+                          <Button 
+                            size="small" 
+                            type="primary" 
+                            onClick={() => navigate('/manager/products')}
+                          >
+                            View All
+                          </Button>
+                        }
+                        style={{ 
+                          borderRadius: '12px', 
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
+                      >
+                        <List
+                          dataSource={dashboardData.topProducts}
+                          renderItem={(item, index) => (
+                            <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
+                              <List.Item.Meta
+                                avatar={
+                                  <Avatar 
+                                    size="small" 
+                                    style={{ 
+                                      backgroundColor: index < 3 ? '#6366F1' : '#4A5568',
+                                      fontSize: '10px',
+                                      fontWeight: 'bold',
+                                      color: 'white'
+                                    }}
+                                  >
+                                    {index + 1}
+                                  </Avatar>
+                                }
+                                title={
+                                  <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
+                                    {item.name || 'Unknown Product'}
+                                  </Text>
+                                }
+                                description={
+                                  <Space direction="vertical" size={0}>
+                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                                      Sold: {item.totalSold || 0} units
+                                    </Text>
+                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                                      Revenue: {formatCurrency(item.totalRevenue || 0)}
+                                    </Text>
+                                  </Space>
+                                }
+                              />
+                            </List.Item>
+                          )}
+                          locale={{ emptyText: 'No product sales data' }}
+                        />
+                      </Card>
+                    </Col>
+
+                    <Col xs={24} lg={12}>
+                      <Card 
+                        title={
+                          <Space>
+                            <ShopOutlined style={{ color: '#9b59b6' }} />
+                            <Text strong style={{ color: 'white' }}>Shop Performance</Text>
+                          </Space>
+                        }
+                        extra={
+                          <Button 
+                            size="small" 
+                            type="primary" 
+                            onClick={() => navigate('/manager/shops')}
+                          >
+                            View All
+                          </Button>
+                        }
+                        style={{ 
+                          borderRadius: '12px', 
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          border: '1px solid #2D3748',
+                          background: '#1A2332'
+                        }}
+                      >
+                        <List
+                          dataSource={dashboardData.shopPerformance}
+                          renderItem={(item) => (
+                            <List.Item style={{ padding: '12px 0', borderBottom: '1px solid #2D3748' }}>
+                              <List.Item.Meta
+                                avatar={
+                                  <Avatar 
+                                    size="small" 
+                                    style={{ 
+                                      backgroundColor: '#9b59b6',
+                                      fontSize: '10px',
+                                      fontWeight: 'bold',
+                                      color: 'white'
+                                    }}
+                                  >
+                                    {item.name?.charAt(0)?.toUpperCase() || 'S'}
+                                  </Avatar>
+                                }
+                                title={
+                                  <Text style={{ fontSize: '13px', fontWeight: 'bold', color: 'white' }}>
+                                    {item.name || 'Unknown Shop'}
+                                  </Text>
+                                }
+                                description={
+                                  <Space direction="vertical" size={0}>
+                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                                      Transactions: {item.transactions || 0}
+                                    </Text>
+                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>
+                                      Revenue: {formatCurrency(item.revenue || 0)}
+                                    </Text>
+                                  </Space>
+                                }
+                              />
+                            </List.Item>
+                          )}
+                          locale={{ emptyText: 'No shop performance data' }}
+                        />
+                      </Card>
+                    </Col>
+                  </Row>
+                </>
               )}
-            </Card>
-          </TabPane>
-
-          {/* Expenses Tab */}
-          <TabPane 
-            tab={<span style={{ color: 'white' }}><DollarOutlined /> Expenses</span>} 
-            key="expenses"
-          >
-            <Card 
-              title="Expenses"
-              extra={
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/manager/expenses')}>
-                  Manage Expenses
-                </Button>
-              }
-              style={{ 
-                borderRadius: '12px',
-                border: '1px solid #2D3748',
-                background: '#1A2332'
-              }}
-            >
-              {dashboardData.expenses?.length > 0 ? (
-                <Table 
-                  columns={expenseColumns} 
-                  dataSource={dashboardData.expenses || []} 
-                  rowKey="_id" 
-                  pagination={{ pageSize: 10 }}
-                />
-              ) : (
-                <Text style={{ color: 'rgba(255,255,255,0.7)' }}>No expenses recorded.</Text>
-              )}
-            </Card>
-          </TabPane>
-        </Tabs>
-      </Content>
+            </>
+          )}
+        </Content>
+      </Layout>
     </Layout>
   );
 };
