@@ -1,4 +1,4 @@
-// src/pages/Manager/ManagerDashboard.jsx - EXACTLY LIKE ADMIN DASHBOARD
+// src/pages/Manager/ManagerDashboard.jsx - Using existing Admin sub-pages
 import React, { useState, useEffect } from 'react';
 import { 
   Layout, Menu, Typography, Card, Row, Col, Table, Tag, Statistic, List, Alert, Spin, 
@@ -34,6 +34,15 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { unifiedAPI, shopAPI } from '../../services/api';
+
+// ==================== IMPORT EXISTING ADMIN COMPONENTS ====================
+// These are the existing Admin sub-pages - we're reusing them for Manager
+import ShopManagement from '../Admin/ShopManagement';
+import CashierManagement from '../Admin/CashierManagement';
+import CreditManagement from '../Admin/CreditManagement';
+
+// Note: Products, Transactions, Expenses, Inventory pages would need to be created
+// or imported from Admin if they exist. For now, we'll use placeholders or the Admin versions.
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -93,6 +102,37 @@ const FinancialStatCard = ({ title, value, prefix = "KES", suffix, color, icon, 
   );
 };
 
+// ==================== PLACEHOLDER COMPONENTS ====================
+// These would be replaced with actual Admin components if they exist
+const ProductsManagement = () => (
+  <Card style={{ background: '#1A2332', border: '1px solid #2D3748', borderRadius: '12px' }}>
+    <Title level={4} style={{ color: 'white' }}>Products Management</Title>
+    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Manage your products here.</Text>
+  </Card>
+);
+
+const TransactionsManagement = () => (
+  <Card style={{ background: '#1A2332', border: '1px solid #2D3748', borderRadius: '12px' }}>
+    <Title level={4} style={{ color: 'white' }}>Transactions</Title>
+    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>View all transactions.</Text>
+  </Card>
+);
+
+const ExpensesManagement = () => (
+  <Card style={{ background: '#1A2332', border: '1px solid #2D3748', borderRadius: '12px' }}>
+    <Title level={4} style={{ color: 'white' }}>Expenses</Title>
+    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Manage expenses here.</Text>
+  </Card>
+);
+
+const InventoryManagement = () => (
+  <Card style={{ background: '#1A2332', border: '1px solid #2D3748', borderRadius: '12px' }}>
+    <Title level={4} style={{ color: 'white' }}>Inventory</Title>
+    <Text style={{ color: 'rgba(255,255,255,0.7)' }}>Manage inventory here.</Text>
+  </Card>
+);
+
+// ==================== MAIN COMPONENT ====================
 const ManagerDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -193,7 +233,7 @@ const ManagerDashboard = () => {
     }
   ];
 
-  // Menu items for sidebar - SAME AS ADMIN
+  // Menu items for sidebar
   const menuItems = [
     { 
       key: 'dashboard', 
@@ -243,13 +283,12 @@ const ManagerDashboard = () => {
       navigate('/cashier-login');
       return;
     }
-    // Only fetch dashboard data if on dashboard page
     if (location.pathname === '/manager/dashboard' || location.pathname === '/manager') {
       fetchDashboardData();
     }
   }, [location.pathname]);
 
-  // Auto-refresh effect - only when on dashboard
+  // Auto-refresh effect
   useEffect(() => {
     let intervalId;
     if (filters.autoRefresh && (location.pathname === '/manager/dashboard' || location.pathname === '/manager')) {
@@ -263,7 +302,7 @@ const ManagerDashboard = () => {
     };
   }, [filters.autoRefresh, location.pathname]);
 
-  // Fetch dashboard data from backend
+  // Fetch dashboard data
   const fetchDashboardData = async (customFilters = null) => {
     const activeFilters = customFilters || filters;
     
@@ -273,12 +312,10 @@ const ManagerDashboard = () => {
       setLoading(true);
       setRefreshing(true);
       
-      // Fetch shops first
       const shopsData = await shopAPI.getAll();
       console.log('🏪 Shops fetched:', shopsData?.length || 0);
       setShops(shopsData || []);
 
-      // Build params for combined API
       const params = {};
       if (activeFilters.dateRange && activeFilters.dateRange[0] && activeFilters.dateRange[1]) {
         params.startDate = activeFilters.dateRange[0].format('YYYY-MM-DD');
@@ -288,12 +325,10 @@ const ManagerDashboard = () => {
         params.shopId = activeFilters.shop;
       }
 
-      // Fetch combined transaction data from backend
       console.log('📡 Fetching combined data with params:', params);
       const response = await unifiedAPI.getCombinedTransactions(params);
       console.log('📊 Combined data response:', response);
       
-      // Handle response properly
       let data = {};
       
       if (!response) {
@@ -309,7 +344,6 @@ const ManagerDashboard = () => {
         data = response;
       }
 
-      // Process the data
       const processedData = processDashboardData(data, shopsData);
       
       setDashboardData(processedData);
@@ -342,7 +376,7 @@ const ManagerDashboard = () => {
     }
   };
 
-  // Process dashboard data from API response
+  // Process dashboard data
   const processDashboardData = (data, shops) => {
     const transactions = data?.salesWithProfit || data?.transactions || [];
     const financialStats = data?.financialStats || data?.summary || data?.financialStats || getDefaultStats();
@@ -439,7 +473,6 @@ const ManagerDashboard = () => {
       activeCredits: (credits || []).filter(c => c.status !== 'paid' && (c.balanceDue || 0) > 0).length
     };
 
-    // ENHANCED FINANCIAL STATS with all metrics
     const totalRevenue = financialStats.totalRevenue || 0;
     const totalSales = financialStats.totalSales || financialStats.totalRevenueCount || 0;
     const costOfGoodsSold = financialStats.costOfGoodsSold || 0;
@@ -590,6 +623,38 @@ const ManagerDashboard = () => {
     }
   };
 
+  // ==================== ROUTE COMPONENT MAP ====================
+  // Maps manager routes to existing Admin components
+  const getRouteComponent = () => {
+    const path = location.pathname;
+    
+    if (path === '/manager' || path === '/manager/dashboard') {
+      return null; // Show dashboard
+    }
+    if (path.includes('/manager/products')) {
+      return <ProductsManagement />;
+    }
+    if (path.includes('/manager/shops')) {
+      return <ShopManagement />;
+    }
+    if (path.includes('/manager/cashiers')) {
+      return <CashierManagement />;
+    }
+    if (path.includes('/manager/transactions')) {
+      return <TransactionsManagement />;
+    }
+    if (path.includes('/manager/expenses')) {
+      return <ExpensesManagement />;
+    }
+    if (path.includes('/manager/inventory')) {
+      return <InventoryManagement />;
+    }
+    if (path.includes('/manager/credits')) {
+      return <CreditManagement />;
+    }
+    return null;
+  };
+
   // Table columns
   const salesColumns = [
     { 
@@ -644,6 +709,9 @@ const ManagerDashboard = () => {
 
   // Check if we're on a sub-page (not dashboard)
   const isSubPage = location.pathname !== '/manager/dashboard' && location.pathname !== '/manager';
+
+  // If on a sub-page, render the component directly
+  const routeComponent = getRouteComponent();
 
   return (
     <Layout style={{ minHeight: '100vh', background: '#0F172A' }}>
@@ -700,7 +768,6 @@ const ManagerDashboard = () => {
             )}
           </Title>
           <Space>
-            {/* Only show dashboard controls on dashboard page */}
             {!isSubPage && (
               <>
                 <Button 
@@ -762,9 +829,9 @@ const ManagerDashboard = () => {
         </Header>
         
         <Content style={{ margin: '16px', padding: 16, background: '#0F172A', minHeight: 'calc(100vh - 112px)' }}>
-          {/* Render child routes or dashboard content */}
+          {/* Render sub-page or dashboard content */}
           {isSubPage ? (
-            <Outlet />
+            routeComponent
           ) : (
             <>
               {/* Filters Panel */}
@@ -882,7 +949,6 @@ const ManagerDashboard = () => {
                         }}
                         bodyStyle={{ padding: '16px' }}
                       >
-                        {/* Row 1: Core Revenue Metrics */}
                         <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
                           <Col span={24}>
                             <Divider orientation="left" style={{ color: '#6366F1', fontSize: '12px', margin: '4px 0' }}>
@@ -917,7 +983,6 @@ const ManagerDashboard = () => {
                           />
                         </Row>
 
-                        {/* Row 2: Cost & Profit Metrics */}
                         <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
                           <Col span={24}>
                             <Divider orientation="left" style={{ color: '#52c41a', fontSize: '12px', margin: '4px 0' }}>
@@ -956,7 +1021,6 @@ const ManagerDashboard = () => {
                           />
                         </Row>
 
-                        {/* Row 3: Profitability Ratios */}
                         <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
                           <Col span={24}>
                             <Divider orientation="left" style={{ color: '#13c2c2', fontSize: '12px', margin: '4px 0' }}>
@@ -997,7 +1061,6 @@ const ManagerDashboard = () => {
                           />
                         </Row>
 
-                        {/* Row 4: Payment & Credit Breakdown */}
                         <Row gutter={[16, 16]}>
                           <Col span={24}>
                             <Divider orientation="left" style={{ color: '#9b59b6', fontSize: '12px', margin: '4px 0' }}>
@@ -1048,7 +1111,6 @@ const ManagerDashboard = () => {
                           />
                         </Row>
 
-                        {/* Summary Bar */}
                         <div style={{ 
                           marginTop: 16, 
                           padding: '12px 16px', 
